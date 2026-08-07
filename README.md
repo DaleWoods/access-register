@@ -65,21 +65,52 @@ Each criterion in section 7 of the requirements has a test named after it in
 
 ## Deploying to Render
 
-This repository contains a [`render.yaml`](./render.yaml) Blueprint, so the
-database and the web service are provisioned together from one file.
+[`render.yaml`](./render.yaml) defines the web service. It deliberately does
+**not** declare a database — Render allows only one free-tier Postgres per
+account, and declaring a second one fails the entire Blueprint sync with
+`cannot have more than one active free tier database`.
 
-1. In Render: **New → Blueprint**, pick this repository, **Apply**.
-2. Wait for the first deploy. It creates the Postgres instance, applies every
-   migration, and creates an admin account.
-3. Open the service's **Environment** tab and copy:
-   - `BOOTSTRAP_ADMIN_PASSWORD` — the password for the admin account, whose
-     email is whatever `BOOTSTRAP_ADMIN_EMAIL` is set to.
-   - `SEED_PASSWORD` — the password for the three demo accounts, if you left
-     the demo data switched on.
-4. Sign in at `https://<your-service>.onrender.com/login`.
+So you supply `DATABASE_URL` yourself, and Render prompts for it during Apply.
 
-Render generates both passwords and shows them nowhere else, so nothing
-sensitive is committed to this repository.
+### Option A — reuse an existing Render Postgres (stays free)
+
+The app keeps all of its tables in their own schema, so it can share a database
+instance with another project without any chance of a name collision.
+
+1. Open your existing Postgres in Render, copy the **Internal Database URL**.
+2. Append a schema parameter to it:
+   ```
+   postgresql://user:pass@host/yourdb?schema=access_register
+   ```
+3. In Render: **New → Blueprint**, pick this repository, **Apply**, and paste
+   that string when it asks for `DATABASE_URL`.
+
+Prisma creates the schema on the first deploy and puts every table — including
+its own migration history — inside it. The database's `public` schema, and
+whatever else uses it, is left completely alone.
+
+Two things to watch: the Internal URL only works if this service and the
+database are in the **same region** (set `region:` in `render.yaml` to match, or
+use the External URL instead), and both apps now share one instance's CPU,
+memory and connection limit.
+
+### Option B — give it its own database
+
+Create a Postgres on a paid plan, or use any other provider, and paste that
+connection string instead. No schema parameter needed.
+
+### After the first deploy
+
+Open the service's **Environment** tab and copy:
+
+- `BOOTSTRAP_ADMIN_PASSWORD` — the password for the admin account, whose email
+  is whatever `BOOTSTRAP_ADMIN_EMAIL` is set to.
+- `SEED_PASSWORD` — the password for the three demo accounts, if you left the
+  demo data switched on.
+
+Render generates both and shows them nowhere else, so nothing sensitive is
+committed to this repository. Then sign in at
+`https://<your-service>.onrender.com/login`.
 
 ### What happens on each deploy
 
@@ -101,13 +132,14 @@ cannot reach Postgres is not healthy in any useful sense.
   `render.yaml`, move to a paid instance type, and set `EVIDENCE_STORAGE_DIR`
   to `/var/data/evidence`.
 - Render's free Postgres expires after 30 days and free web services sleep when
-  idle. Neither is suitable for a register anyone depends on.
+  idle. Neither is suitable for a register anyone depends on, and sharing one
+  free instance across two apps compounds that.
 - The login form has no rate limiting or lockout. That is acceptable behind
   Entra SSO, which is the phase-2 plan; it is worth adding before this is
   internet-facing with local passwords and real data in it.
-- The register holds personal data. Confirm the region in `render.yaml`
-  (`frankfurt` by default) is consistent with WOSG's data policy before loading
-  anything real, and set a backup schedule on the database.
+- The register holds personal data. Confirm the region is consistent with
+  WOSG's data policy before loading anything real, and set a backup schedule on
+  the database.
 
 ---
 

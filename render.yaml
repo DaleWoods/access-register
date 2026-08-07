@@ -1,29 +1,38 @@
 # Render Blueprint for the Third-Party Access Register.
 #
 # In Render: New → Blueprint → pick this repository → Apply.
-# That provisions the Postgres database and the web service together, and wires
-# the connection string and generated secrets between them. No manual env vars.
 #
-# After the first deploy, read BOOTSTRAP_ADMIN_PASSWORD (and SEED_PASSWORD, if
-# you left the demo data on) from the service's Environment tab — Render
-# generates them and never shows them anywhere else.
-
-databases:
-  - name: access-register-db
-    databaseName: access_register
-    user: access_register
-    plan: free
-    region: frankfurt
-    # The register holds names and email addresses, so keep the database
-    # private. Render only allows connections from inside the same region and
-    # account unless you add IP rules here.
-    ipAllowList: []
+# NOTE ON THE DATABASE
+# This Blueprint does not create one. Render allows only a single free-tier
+# Postgres per account, so declaring one here fails the whole sync with
+# "cannot have more than one active free tier database" if you already have
+# one for another project.
+#
+# Instead, set DATABASE_URL yourself when prompted (it is marked sync: false,
+# so Render asks for it during Apply). Two ways to fill it in:
+#
+#   a) Reuse an existing Render Postgres, in its own schema. Take that
+#      database's Internal Database URL and append a schema parameter:
+#
+#        postgresql://…/yourdb?schema=access_register
+#
+#      Prisma creates the schema on first deploy and keeps every table,
+#      including its migration history, inside it. Nothing in that database's
+#      public schema is touched. Use the Internal URL only if this service and
+#      the database are in the same region — otherwise use the External URL.
+#
+#   b) Give this app its own database, on a paid plan or another provider,
+#      and paste that connection string.
+#
+# See README.md → Deploying to Render for the full walkthrough.
 
 services:
   - type: web
     name: access-register
     runtime: node
     plan: free
+    # Must match the region of whichever database you point DATABASE_URL at,
+    # if you are using that database's Internal URL.
     region: frankfurt
     branch: main
 
@@ -37,10 +46,9 @@ services:
     healthCheckPath: /api/health
 
     envVars:
+      # Set during Apply. See the note at the top of this file.
       - key: DATABASE_URL
-        fromDatabase:
-          name: access-register-db
-          property: connectionString
+        sync: false
 
       # Signs the session cookie. Generated once and kept; changing it signs
       # everyone out.
