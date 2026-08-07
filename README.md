@@ -65,96 +65,71 @@ Each criterion in section 7 of the requirements has a test named after it in
 
 ## Deploying to Render
 
-[`render.yaml`](./render.yaml) defines the web service. It deliberately does
-**not** declare a database — Render allows only one free-tier Postgres per
-account, and declaring a second one fails the entire Blueprint sync with
-`cannot have more than one active free tier database`.
+[`render.yaml`](./render.yaml) is a Blueprint: **New → Blueprint → pick this
+repository → Apply.** Nothing to fill in by hand.
 
-So you supply `DATABASE_URL` yourself, and Render prompts for it during Apply.
+### Why it reuses `bis-db`
 
-### Option A — reuse an existing Render Postgres (stays free)
+Render allows one free-tier Postgres per account, and this account's one free
+database is `bis-db`. Declaring a second fails the whole sync with
+`cannot have more than one active free tier database`, so the Blueprint points
+`DATABASE_URL` at the existing database instead, via `fromDatabase`.
 
-The app keeps all of its tables in their own schema, so it can share a database
-instance with another project without any chance of a name collision.
+Sharing is safe because `DATABASE_SCHEMA` puts every table this app owns —
+including Prisma's own migration history — inside an `access_register` schema.
+It cannot collide with anything the other app keeps in `public`. To undo the
+whole thing, drop that one schema. `DATABASE_CONNECTION_LIMIT` caps this app's
+pool at 5 so it cannot exhaust a shared instance's connections.
 
-1. Open your existing Postgres in Render, copy the **Internal Database URL**.
-2. Append a schema parameter to it:
-   ```
-   postgresql://user:pass@host/yourdb?schema=access_register
-   ```
-3. In Render: **New → Blueprint**, pick this repository, **Apply**, and paste
-   that string when it asks for `DATABASE_URL`.
-
-Prisma creates the schema on the first deploy and puts every table — including
-its own migration history — inside it. The database's `public` schema, and
-whatever else uses it, is left completely alone.
-
-Two things to watch: the Internal URL only works if this service and the
-database are in the **same region** (set `region:` in `render.yaml` to match, or
-use the External URL instead), and both apps now share one instance's CPU,
-memory and connection limit.
-
-### Option B — give it its own database
-
-Create a Postgres on a paid plan, or use any other provider, and paste that
-connection string instead. No schema parameter needed.
-
-### If the deploy fails with "DATABASE_URL is not set"
-
-`DATABASE_URL` is marked `sync: false`, which means Render only prompts for it
-during an **interactive Blueprint Apply**. A sync triggered by a git push cannot
-prompt, so the service gets created with the value empty, the start command
-refuses to run, and the sync reports `deploy failed`.
-
-Fix it in the dashboard:
-
-1. Open the **access-register** service → **Environment**.
-2. Add `DATABASE_URL` with your connection string (see the two options above).
-3. **Manual Deploy → Deploy latest commit.**
-
-The deploy log states this explicitly when the value is missing.
+The web service's `region` must match the database's, because Render supplies an
+internal hostname that only resolves inside one region. Both are `oregon`.
 
 ### After the first deploy
 
 Open the service's **Environment** tab and copy:
 
-- `BOOTSTRAP_ADMIN_PASSWORD` — the password for the admin account, whose email
-  is whatever `BOOTSTRAP_ADMIN_EMAIL` is set to.
-- `SEED_PASSWORD` — the password for the three demo accounts, if you left the
-  demo data switched on.
+- `BOOTSTRAP_ADMIN_PASSWORD` — for the admin account, whose address is
+  `BOOTSTRAP_ADMIN_EMAIL`.
+- `SEED_PASSWORD` — for the three demo accounts, if the demo data is on.
 
 Render generates both and shows them nowhere else, so nothing sensitive is
-committed to this repository. Then sign in at
-`https://<your-service>.onrender.com/login`.
+committed here. Sign in at `https://<your-service>.onrender.com/login`.
 
 ### What happens on each deploy
 
 `npm run start:render` runs [`scripts/bootstrap.mjs`](./scripts/bootstrap.mjs)
-before the server accepts traffic. It applies pending migrations, ensures an
-active admin exists, and loads the demo data **only while the register is
-completely empty**. All of it is idempotent, so a restart or redeploy never
-reseeds and never resets a password.
+before the server accepts traffic. It composes the connection string, applies
+pending migrations, ensures an active admin exists, and loads the demo data
+**only while the register is completely empty**. All of it is idempotent, so a
+restart or redeploy never reseeds and never resets a password.
 
 `/api/health` is the health check. It runs a query, because a web process that
 cannot reach Postgres is not healthy in any useful sense.
+
+### Giving the register its own database later
+
+Replace the `fromDatabase` block with a `DATABASE_URL` set under Environment,
+and remove `DATABASE_SCHEMA`. Nothing else changes.
 
 ### Before you put real data in
 
 - Set `SEED_DEMO_DATA` to `false` and delete the demo vendors from the app.
   Everything seeded uses `@wosg.example` addresses, so it is easy to spot.
+- **`bis-db` is a free instance that expires and is deleted unless upgraded.**
+  Both this app and its owner go with it. Check the expiry date on the database
+  in Render.
 - **Leaver evidence uploads are lost on every deploy on the free plan.** Render's
   free instances have ephemeral storage. Uncomment the `disk:` block in
   `render.yaml`, move to a paid instance type, and set `EVIDENCE_STORAGE_DIR`
   to `/var/data/evidence`.
-- Render's free Postgres expires after 30 days and free web services sleep when
-  idle. Neither is suitable for a register anyone depends on, and sharing one
-  free instance across two apps compounds that.
+- Free web services sleep when idle, so the first request after a quiet spell
+  takes around 50 seconds.
 - The login form has no rate limiting or lockout. That is acceptable behind
   Entra SSO, which is the phase-2 plan; it is worth adding before this is
   internet-facing with local passwords and real data in it.
-- The register holds personal data. Confirm the region is consistent with
-  WOSG's data policy before loading anything real, and set a backup schedule on
-  the database.
+- The register holds personal data, and `oregon` is a US region. Confirm that is
+  consistent with WOSG's data policy before loading anything real, and set a
+  backup schedule on the database.
 
 ---
 

@@ -14,6 +14,7 @@
 import { execFileSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { composeDatabaseUrl, redactDatabaseUrl } from "../src/lib/database-url.mjs";
 
 const log = (message) => console.log(`[bootstrap] ${message}`);
 
@@ -63,6 +64,12 @@ async function main() {
       "  openssl rand -hex 32",
     ]);
   }
+
+  // Everything below — the Prisma CLI, the seed, and this script's own client —
+  // reads DATABASE_URL from the environment, so compose it once here and let
+  // child processes inherit it.
+  process.env.DATABASE_URL = composeDatabaseUrl();
+  log(`database: ${redactDatabaseUrl(process.env.DATABASE_URL)}`);
 
   log("applying database migrations");
   run("npx", ["prisma", "migrate", "deploy"]);

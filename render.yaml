@@ -1,39 +1,32 @@
 # Render Blueprint for the Third-Party Access Register.
 #
 # In Render: New → Blueprint → pick this repository → Apply.
+# Nothing to fill in by hand — the database is wired automatically, the same
+# way the bis-app Blueprint wires its own.
 #
-# NOTE ON THE DATABASE
-# This Blueprint does not create one. Render allows only a single free-tier
-# Postgres per account, so declaring one here fails the whole sync with
-# "cannot have more than one active free tier database" if you already have
-# one for another project.
+# WHY IT REUSES bis-db
+# Render allows a single free-tier Postgres per account, and this account's one
+# free database is `bis-db`. Declaring a second fails the whole sync with
+# "cannot have more than one active free tier database", so this Blueprint
+# points at the existing one instead.
 #
-# Instead, set DATABASE_URL yourself when prompted (it is marked sync: false,
-# so Render asks for it during Apply). Two ways to fill it in:
+# Sharing is safe: DATABASE_SCHEMA puts every table this app owns — including
+# Prisma's own migration history — inside an `access_register` schema, so it
+# cannot collide with anything bis-app keeps in `public`. To undo it entirely,
+# drop that one schema.
 #
-#   a) Reuse an existing Render Postgres, in its own schema. Take that
-#      database's Internal Database URL and append a schema parameter:
-#
-#        postgresql://…/yourdb?schema=access_register
-#
-#      Prisma creates the schema on first deploy and keeps every table,
-#      including its migration history, inside it. Nothing in that database's
-#      public schema is touched. Use the Internal URL only if this service and
-#      the database are in the same region — otherwise use the External URL.
-#
-#   b) Give this app its own database, on a paid plan or another provider,
-#      and paste that connection string.
-#
-# See README.md → Deploying to Render for the full walkthrough.
+# To give the register its own database later, replace the fromDatabase block
+# with a plain connection string set under Environment, and drop
+# DATABASE_SCHEMA. See README.md → Deploying to Render.
 
 services:
   - type: web
     name: access-register
     runtime: node
     plan: free
-    # Must match the region of whichever database you point DATABASE_URL at,
-    # if you are using that database's Internal URL.
-    region: frankfurt
+    # Must match bis-db's region, because the connection string Render supplies
+    # is an internal hostname that only resolves inside one region.
+    region: oregon
     branch: main
 
     # --include=dev is deliberate: Render sets NODE_ENV=production, which makes
@@ -46,14 +39,21 @@ services:
     healthCheckPath: /api/health
 
     envVars:
-      # Set during Apply. See the note at the top of this file.
-      #
-      # Render only prompts for a sync: false value during an interactive
-      # Blueprint Apply. A sync triggered by a git push cannot prompt, so this
-      # is left empty and the deploy fails on purpose rather than starting a
-      # register with no database. Set it under Environment, then Manual Deploy.
+      # The existing free Postgres, referenced by its Render name.
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: bis-db
+          property: connectionString
+
+      # Keeps this app's tables out of bis-app's way. Removing this would put
+      # them in `public` alongside bis-app's own.
+      - key: DATABASE_SCHEMA
+        value: access_register
+
+      # Caps the connection pool so this app cannot exhaust a shared instance's
+      # connections and starve bis-app.
+      - key: DATABASE_CONNECTION_LIMIT
+        value: "5"
 
       # Signs the session cookie. Generated once and kept; changing it signs
       # everyone out.
@@ -61,7 +61,6 @@ services:
         generateValue: true
 
       # The first admin. Without this nobody can sign in to a fresh database.
-      # Change the email to whoever should hold the account.
       - key: BOOTSTRAP_ADMIN_EMAIL
         value: dalewoods130@gmail.com
       - key: BOOTSTRAP_ADMIN_NAME
