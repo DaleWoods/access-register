@@ -1,0 +1,82 @@
+# Render Blueprint for the Third-Party Access Register.
+#
+# In Render: New → Blueprint → pick this repository → Apply.
+# That provisions the Postgres database and the web service together, and wires
+# the connection string and generated secrets between them. No manual env vars.
+#
+# After the first deploy, read BOOTSTRAP_ADMIN_PASSWORD (and SEED_PASSWORD, if
+# you left the demo data on) from the service's Environment tab — Render
+# generates them and never shows them anywhere else.
+
+databases:
+  - name: access-register-db
+    databaseName: access_register
+    user: access_register
+    plan: free
+    region: frankfurt
+    # The register holds names and email addresses, so keep the database
+    # private. Render only allows connections from inside the same region and
+    # account unless you add IP rules here.
+    ipAllowList: []
+
+services:
+  - type: web
+    name: access-register
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+
+    # --include=dev is deliberate: Render sets NODE_ENV=production, which makes
+    # a plain `npm ci` skip devDependencies — and the build needs TypeScript,
+    # Tailwind and PostCSS.
+    buildCommand: npm ci --include=dev && npm run build
+    # Applies migrations and ensures an admin exists before serving traffic.
+    startCommand: npm run start:render
+
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: access-register-db
+          property: connectionString
+
+      # Signs the session cookie. Generated once and kept; changing it signs
+      # everyone out.
+      - key: AUTH_SECRET
+        generateValue: true
+
+      # The first admin. Without this nobody can sign in to a fresh database.
+      # Change the email to whoever should hold the account.
+      - key: BOOTSTRAP_ADMIN_EMAIL
+        value: dalewoods130@gmail.com
+      - key: BOOTSTRAP_ADMIN_NAME
+        value: Dale Woods
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        generateValue: true
+
+      # Loads the demo vendors, people and accounts, but only while the
+      # register is completely empty. Set this to "false" before putting real
+      # data in, and delete the demo vendors from the app.
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: SEED_PASSWORD
+        generateValue: true
+
+      # Leaver evidence uploads. On the free plan this is ephemeral container
+      # storage and is lost on every deploy — see the disk block below.
+      - key: EVIDENCE_STORAGE_DIR
+        value: ./storage/evidence
+
+      - key: NODE_VERSION
+        value: "22"
+
+    # Persistent storage for leaver evidence files. Render disks need a paid
+    # instance type, so this is commented out for the free plan. When you
+    # upgrade, uncomment this and set EVIDENCE_STORAGE_DIR to /var/data/evidence.
+    #
+    # disk:
+    #   name: evidence
+    #   mountPath: /var/data
+    #   sizeGB: 5

@@ -1,0 +1,560 @@
+// WOSG Third-Party Access Register — data model.
+//
+// Design notes that matter:
+//  * AuditEvent is append-only. A migration installs a Postgres trigger that
+//    rejects UPDATE and DELETE on the table, so immutability does not depend on
+//    application code behaving.
+//  * AccessRecord is never hard-deleted. Removal is `accountStatus = REMOVED`.
+//  * "N/A - not exposed" is a first-class state, distinct from blank. Each
+//    optional date field carries a companion FieldState column so the register
+//    can tell "the vendor will never give us this" apart from "nobody has
+//    captured this yet".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AppRole {
+  ADMIN
+  VENDOR_OWNER
+  AUDITOR
+}
+
+enum VendorCategory {
+  PAYMENTS
+  COURIER
+  DEV_TOOLING
+  ANALYTICS
+  BRAND_PARTNER
+  HOSTING
+  OTHER
+}
+
+enum CaptureMethod {
+  CSV_EXPORT
+  API
+  MANUAL_READ
+}
+
+enum PersonType {
+  EMPLOYEE
+  CONTRACTOR
+  PARTNER
+  SERVICE_ACCOUNT
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  LEFT
+  UNKNOWN
+}
+
+enum AccountStatus {
+  ACTIVE
+  DISABLED
+  REMOVED
+}
+
+/// Tri-state for fields a vendor may or may not expose.
+/// CAPTURED    - we hold a value (or have confirmed it is genuinely empty).
+/// BLANK       - not yet captured. Outstanding work.
+/// NOT_EXPOSED - the vendor does not publish this field. The data will never exist.
+enum FieldState {
+  CAPTURED
+  BLANK
+  NOT_EXPOSED
+}
+
+enum ChangeSource {
+  MANUAL
+  IMPORT
+  LEAVER_PROCESS
+  REVIEW
+  SYSTEM
+}
+
+enum ImportBatchStatus {
+  STAGED
+  COMMITTED
+  DISCARDED
+}
+
+enum StagedRowDiff {
+  NEW
+  CHANGED
+  UNCHANGED
+  INVALID
+}
+
+enum ReviewCycleType {
+  QUARTERLY
+  ANNUAL
+}
+
+enum ReviewCycleStatus {
+  OPEN
+  CLOSED
+}
+
+enum ReviewOutcome {
+  KEEP
+  DOWNGRADE
+  REMOVE
+}
+
+enum LeaverCaseStatus {
+  OPEN
+  CLOSED
+}
+
+enum LeaverActionType {
+  PENDING
+  REMOVED
+  RETAINED
+  NOT_APPLICABLE
+}
+
+enum SavedViewScope {
+  PERSONAL
+  SHARED
+}
+
+// ---------------------------------------------------------------------------
+// App users & access control
+// ---------------------------------------------------------------------------
+
+model AppUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  fullName     String
+  role         AppRole  @default(AUDITOR)
+  passwordHash String? // null when the account authenticates via Entra/OIDC only
+  entraOid     String?  @unique // Entra object id, populated in the SSO phase
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ownedVendors    Vendor[]      @relation("VendorOwner")
+  vendorGrants    VendorGrant[]
+  importBatches   ImportBatch[]
+  auditEvents     AuditEvent[]
+  reviewItems     ReviewItem[]
+  savedViews      SavedView[]
+  openedLeavers   LeaverCase[]  @relation("LeaverOpenedBy")
+  leaverActions   LeaverAction[]
+  openedCycles    ReviewCycle[] @relation("CycleOpenedBy")
+
+  @@index([role])
+}
+
+/// Extra vendors a VENDOR_OWNER may work on beyond the ones they formally own.
+model VendorGrant {
+  id       String  @id @default(uuid())
+  userId   String
+  vendorId String
+  canEdit  Boolean @default(true)
+
+  user   AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vendor Vendor  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, vendorId])
+  @@index([vendorId])
+}
+
+// ---------------------------------------------------------------------------
+// Vendors
+// ---------------------------------------------------------------------------
+
+model Vendor {
+  id                    String         @id @default(uuid())
+  name                  String         @unique
+  category              VendorCategory @default(OTHER)
+  description           String         @default("")
+  ownerUserId           String?
+  captureMethod         CaptureMethod  @default(CSV_EXPORT)
+  exposesLastLogin      Boolean        @default(true)
+  exposesPasswordExpiry Boolean        @default(false)
+  exposesAccountExpiry  Boolean        @default(false)
+  exposesAccountCreated Boolean        @default(false)
+  reviewFrequencyMonths Int            @default(3)
+  notes                 String         @default("")
+  isArchived            Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  owner          AppUser?         @relation("VendorOwner", fields: [ownerUserId], references: [id])
+  instances      VendorInstance[]
+  accessRecords  AccessRecord[]
+  importBatches  ImportBatch[]
+  columnMappings ColumnMapping[]
+  grants         VendorGrant[]
+
+  @@index([ownerUserId])
+  @@index([category])
+}
+
+model VendorInstance {
+  id       String  @id @default(uuid())
+  vendorId String
+  name     String
+  notes    String  @default("")
+  isArchived Boolean @default(false)
+
+  vendor        Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  accessRecords AccessRecord[]
+  importBatches ImportBatch[]
+
+  @@unique([vendorId, name])
+  @@index([vendorId])
+}
+
+// ---------------------------------------------------------------------------
+// People (the canonical human)
+// ---------------------------------------------------------------------------
+
+model Person {
+  id              String         @id @default(uuid())
+  fullName        String
+  primaryEmail    String?        @unique
+  alternateEmails String[]       @default([])
+  personType      PersonType     @default(EMPLOYEE)
+  employeeStatus  EmployeeStatus @default(UNKNOWN)
+  department      String?
+  lineManager     String?
+  hrReference     String?
+  startDate       DateTime?
+  leaveDate       DateTime?
+  notes           String         @default("")
+  /// Set when this Person was merged into another; the record is retained so
+  /// audit history and old links stay resolvable.
+  mergedIntoId    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  mergedInto    Person?        @relation("PersonMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom    Person[]       @relation("PersonMerge")
+  accessRecords AccessRecord[]
+  leaverCases   LeaverCase[]
+
+  @@index([employeeStatus])
+  @@index([fullName])
+  @@index([mergedIntoId])
+}
+
+// ---------------------------------------------------------------------------
+// The register
+// ---------------------------------------------------------------------------
+
+model AccessRecord {
+  id         String  @id @default(uuid())
+  vendorId   String
+  instanceId String?
+  personId   String?
+
+  /// Stable identity of this account within its vendor+instance, normalised
+  /// from rawUsername/rawEmail. Used to match import rows to existing records.
+  matchKey String
+  /// "" when the record has no instance. Lets the unique constraint work,
+  /// because Postgres treats NULLs as distinct.
+  instanceKey String @default("")
+
+  rawUsername     String  @default("")
+  rawEmail        String  @default("")
+  role            String  @default("")
+  permissionLevel String  @default("")
+
+  accountStatus AccountStatus @default(ACTIVE)
+
+  accountCreated      DateTime?
+  accountCreatedState FieldState @default(BLANK)
+  accountExpiry       DateTime?
+  accountExpiryState  FieldState @default(BLANK)
+  passwordExpiry      DateTime?
+  passwordExpiryState FieldState @default(BLANK)
+  lastLogin           DateTime?
+  lastLoginState      FieldState @default(BLANK)
+
+  justification String       @default("")
+  source        CaptureMethod @default(CSV_EXPORT)
+
+  firstSeen        DateTime  @default(now())
+  lastSeenInSource DateTime?
+  lastConfirmed    DateTime?
+  lastReviewedAt   DateTime?
+
+  /// Derived by the rule engine: dormant, unverifiable, unmatched,
+  /// leaver_with_access, expiring_soon, no_justification, never_reviewed.
+  flags       String[] @default([])
+  flagsSyncedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendor        Vendor          @relation(fields: [vendorId], references: [id])
+  instance      VendorInstance? @relation(fields: [instanceId], references: [id])
+  person        Person?         @relation(fields: [personId], references: [id])
+  reviewItems   ReviewItem[]
+  leaverActions LeaverAction[]
+  stagedRows    StagedRow[]
+  disappearedIn DisappearedCandidate[]
+
+  @@unique([vendorId, instanceKey, matchKey])
+  @@index([personId])
+  @@index([vendorId, accountStatus])
+  @@index([accountStatus])
+  @@index([lastLogin])
+  @@index([flags])
+}
+
+// ---------------------------------------------------------------------------
+// Import pipeline
+// ---------------------------------------------------------------------------
+
+model ColumnMapping {
+  id        String   @id @default(uuid())
+  vendorId  String
+  name      String   @default("Default")
+  /// { "<source column header>": "<canonical field key>" }
+  mapping   Json
+  /// Per-field parsing hints, e.g. { "lastLogin": { "dateFormat": "DD/MM/YYYY" } }
+  options   Json     @default("{}")
+  isDefault Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vendor  Vendor        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  batches ImportBatch[]
+
+  @@unique([vendorId, name])
+  @@index([vendorId])
+}
+
+model ImportBatch {
+  id             String            @id @default(uuid())
+  vendorId       String
+  instanceId     String?
+  importedById   String
+  mappingId      String?
+  status         ImportBatchStatus @default(STAGED)
+  sourceFilename String            @default("pasted-data")
+  rowCount       Int               @default(0)
+  /// { new, changed, unchanged, invalid, disappeared, removedConfirmed, personsCreated, personsLinked }
+  summary        Json              @default("{}")
+  /// SHA-256 of the normalised staged payload. Lets us spot a byte-identical re-import.
+  payloadHash    String?
+  createdAt      DateTime          @default(now())
+  importedAt     DateTime?
+  discardedAt    DateTime?
+
+  vendor     Vendor                 @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  instance   VendorInstance?        @relation(fields: [instanceId], references: [id])
+  importedBy AppUser                @relation(fields: [importedById], references: [id])
+  mapping    ColumnMapping?         @relation(fields: [mappingId], references: [id])
+  rows       StagedRow[]
+  disappeared DisappearedCandidate[]
+
+  @@index([vendorId, status])
+  @@index([importedAt])
+}
+
+/// A single normalised row sitting in the staging area, with its computed diff
+/// against the live register. Nothing here has touched AccessRecord yet.
+model StagedRow {
+  id        String        @id @default(uuid())
+  batchId   String
+  rowNumber Int
+  /// Original source row as parsed, header -> value.
+  raw       Json
+  /// Normalised canonical fields.
+  canonical Json
+  diff      StagedRowDiff @default(NEW)
+  /// [{ field, oldValue, newValue }] for CHANGED rows.
+  changes   Json          @default("[]")
+  errors    String[]      @default([])
+
+  matchedRecordId String?
+  /// Person resolved by exact email match; linked automatically on commit.
+  matchedPersonId String?
+  /// Person suggested by fuzzy name match. Never applied without confirmation.
+  suggestedPersonId String?
+  suggestedPersonScore Float?
+  /// Operator decision for this row's person: null = leave unmatched.
+  decidedPersonId String?
+  createPerson    Boolean @default(false)
+  /// Operator can skip a row entirely.
+  skip            Boolean @default(false)
+
+  batch         ImportBatch   @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  matchedRecord AccessRecord? @relation(fields: [matchedRecordId], references: [id])
+
+  @@unique([batchId, rowNumber])
+  @@index([batchId, diff])
+}
+
+/// An account in the register that was absent from this import.
+/// Never actioned without explicit confirmation.
+model DisappearedCandidate {
+  id             String  @id @default(uuid())
+  batchId        String
+  accessRecordId String
+  confirmRemove  Boolean @default(false)
+
+  batch        ImportBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  accessRecord AccessRecord @relation(fields: [accessRecordId], references: [id])
+
+  @@unique([batchId, accessRecordId])
+}
+
+// ---------------------------------------------------------------------------
+// Review cycles
+// ---------------------------------------------------------------------------
+
+model ReviewCycle {
+  id         String            @id @default(uuid())
+  name       String
+  type       ReviewCycleType   @default(QUARTERLY)
+  status     ReviewCycleStatus @default(OPEN)
+  openedById String?
+  openedAt   DateTime          @default(now())
+  dueAt      DateTime
+  closedAt   DateTime?
+
+  openedBy AppUser?     @relation("CycleOpenedBy", fields: [openedById], references: [id])
+  items    ReviewItem[]
+
+  @@index([status])
+}
+
+model ReviewItem {
+  id             String         @id @default(uuid())
+  cycleId        String
+  accessRecordId String
+  reviewerUserId String?
+  outcome        ReviewOutcome?
+  notes          String         @default("")
+  /// Snapshot of the challenge prompts shown at review time.
+  challenges     String[]       @default([])
+  reviewedAt     DateTime?
+
+  cycle        ReviewCycle  @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  accessRecord AccessRecord @relation(fields: [accessRecordId], references: [id])
+  reviewer     AppUser?     @relation(fields: [reviewerUserId], references: [id])
+
+  @@unique([cycleId, accessRecordId])
+  @@index([reviewerUserId])
+}
+
+// ---------------------------------------------------------------------------
+// Leaver workflow
+// ---------------------------------------------------------------------------
+
+model LeaverCase {
+  id         String           @id @default(uuid())
+  personId   String
+  status     LeaverCaseStatus @default(OPEN)
+  openedById String?
+  openedAt   DateTime         @default(now())
+  closedAt   DateTime?
+  notes      String           @default("")
+
+  person   Person         @relation(fields: [personId], references: [id])
+  openedBy AppUser?       @relation("LeaverOpenedBy", fields: [openedById], references: [id])
+  actions  LeaverAction[]
+
+  @@index([personId])
+  @@index([status])
+}
+
+model LeaverAction {
+  id             String           @id @default(uuid())
+  caseId         String
+  accessRecordId String
+  action         LeaverActionType @default(PENDING)
+  evidenceNote   String           @default("")
+  actionedById   String?
+  actionedAt     DateTime?
+
+  case         LeaverCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  accessRecord AccessRecord   @relation(fields: [accessRecordId], references: [id])
+  actionedBy   AppUser?       @relation(fields: [actionedById], references: [id])
+  evidence     EvidenceFile[]
+
+  @@unique([caseId, accessRecordId])
+}
+
+model EvidenceFile {
+  id             String   @id @default(uuid())
+  leaverActionId String
+  filename       String
+  mimeType       String
+  sizeBytes      Int
+  /// Path relative to the configured evidence storage root.
+  storagePath    String
+  uploadedAt     DateTime @default(now())
+
+  leaverAction LeaverAction @relation(fields: [leaverActionId], references: [id], onDelete: Cascade)
+
+  @@index([leaverActionId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail — append only, enforced by a database trigger
+// ---------------------------------------------------------------------------
+
+model AuditEvent {
+  id           String       @id @default(uuid())
+  entityType   String
+  entityId     String
+  /// null for create/delete events.
+  field        String?
+  oldValue     String?
+  newValue     String?
+  changedById  String?
+  /// Human-readable actor, retained even if the AppUser row changes. "system" for imports.
+  changedByLabel String     @default("system")
+  changeSource ChangeSource @default(MANUAL)
+  /// Groups every event written by one action (one import commit, one edit).
+  correlationId String?
+  changedAt    DateTime     @default(now())
+
+  changedBy AppUser? @relation(fields: [changedById], references: [id])
+
+  @@index([entityType, entityId, changedAt])
+  @@index([changedAt])
+  @@index([correlationId])
+}
+
+// ---------------------------------------------------------------------------
+// Saved views & settings
+// ---------------------------------------------------------------------------
+
+model SavedView {
+  id          String         @id @default(uuid())
+  name        String
+  entity      String         @default("accessRecord")
+  ownerUserId String
+  scope       SavedViewScope @default(PERSONAL)
+  /// Serialised querystring for the register list view.
+  query       String
+  createdAt   DateTime       @default(now())
+
+  owner AppUser @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerUserId, entity, name])
+  @@index([entity, scope])
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

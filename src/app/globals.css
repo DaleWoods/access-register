@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-slate-100 text-slate-900 antialiased;
+  }
+  th {
+    @apply text-left font-semibold;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+  }
+  .card-header {
+    @apply flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3;
+  }
+  .card-body {
+    @apply px-5 py-4;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn border-slate-900 bg-slate-900 text-white hover:bg-slate-700;
+  }
+  .btn-secondary {
+    @apply btn border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn border-red-600 bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1 text-xs;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 disabled:bg-slate-100 disabled:text-slate-500;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+  .table thead th {
+    @apply whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500;
+  }
+  .table tbody td {
+    @apply border-b border-slate-100 px-3 py-2 align-top;
+  }
+  .table tbody tr:hover {
+    @apply bg-slate-50;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+
+  .link {
+    @apply text-blue-700 underline-offset-2 hover:underline;
+  }
+
+  /* "N/A - not exposed" must be visually distinct from an empty cell, so a
+     blank never gets mistaken for data that will never exist. */
+  .na-cell {
+    @apply inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500;
+  }
+  .blank-cell {
+    @apply inline-flex items-center text-xs italic text-amber-600;
+  }
+}

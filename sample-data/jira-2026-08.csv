@@ -1,0 +1,5 @@
+username,email,name,groups,active,last_login
+dale.woods,dale.woods@wosg.example,Dale Woods,jira-administrators,true,2026-08-06
+priya.shah,priya.shah@wosg.example,Priya Shah,jira-software-users,true,2026-08-05
+tom.reeves,tom.reeves@wosg.example,Tom Reeves,jira-software-users,true,2026-03-28
+c.nolan,contractor.nolan@partner.example,Chris Nolan,jira-software-users,true,2025-06-14

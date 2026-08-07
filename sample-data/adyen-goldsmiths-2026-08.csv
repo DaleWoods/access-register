@@ -1,0 +1,7 @@
+User Name,Email Address,Full Name,Role,Status,Created On,Last Login,Password Expires
+dwoods,dale.woods@wosg.example,Dale Woods,Merchant Admin,Active,14/02/2024,05/08/2026,12/11/2026
+pshah,priya.shah@wosg.example,Priya Shah,Support,Active,03/06/2024,28/07/2026,02/09/2026
+treeves,tom.reeves@wosg.example,Tom Reeves,Merchant Admin,Active,19/09/2023,22/03/2026,15/08/2026
+mbell,marcus.bell@wosg.example,Marcus Bell,Finance Viewer,Active,11/01/2023,01/08/2026,20/10/2026
+jhartley,j.hartley@wosg.example,Jo Hartley,Support,Active,27/04/2022,08/06/2024,01/09/2026
+integrations,,Integration Service,API,Active,02/02/2022,04/08/2026,
