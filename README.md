@@ -66,25 +66,53 @@ Each criterion in section 7 of the requirements has a test named after it in
 ## Deploying to Render
 
 [`render.yaml`](./render.yaml) is a Blueprint: **New → Blueprint → pick this
-repository → Apply.** Nothing to fill in by hand.
+repository → Apply.** There is exactly **one** manual step.
 
-### Why it reuses `bis-db`
+### Set DATABASE_URL, once
 
-Render allows one free-tier Postgres per account, and this account's one free
-database is `bis-db`. Declaring a second fails the whole sync with
-`cannot have more than one active free tier database`, so the Blueprint points
-`DATABASE_URL` at the existing database instead, via `fromDatabase`.
+1. Open your Postgres in Render → **Connect** → copy the **Internal Database URL**.
+2. Open the **access-register** service → **Environment** → add `DATABASE_URL`
+   and paste it **exactly as given**. Nothing to append.
+3. **Manual Deploy → Deploy latest commit.**
 
-Sharing is safe because `DATABASE_SCHEMA` puts every table this app owns —
-including Prisma's own migration history — inside an `access_register` schema.
-It cannot collide with anything the other app keeps in `public`. To undo the
-whole thing, drop that one schema. `DATABASE_CONNECTION_LIMIT` caps this app's
-pool at 5 so it cannot exhaust a shared instance's connections.
+The app puts its own tables in an `access_register` schema by itself, so the
+bare connection string is enough. See
+[`src/lib/database-url.mjs`](./src/lib/database-url.mjs).
 
-The web service's `region` must match the database's, because Render supplies an
-internal hostname that only resolves inside one region. Both are `oregon`.
+The service's `region` in `render.yaml` must match the database's, because an
+internal hostname only resolves inside one region. If they differ, either change
+`region:` or use the **External** Database URL instead.
 
-### After the first deploy
+### Why this step cannot be automated away
+
+Render allows one free-tier Postgres per account, and this account's is `bis-db`,
+owned by the bis-app Blueprint. Two ways to avoid the manual step were tried,
+and both failed:
+
+| Attempt | Result |
+|---|---|
+| Declare our own database with `plan: free` | `cannot have more than one active free tier database` — failed the whole sync |
+| `fromDatabase: name: bis-db` | Does not resolve a database owned by a *different* Blueprint, so `DATABASE_URL` stayed empty |
+
+A `sync: false` value is only prompted for during an interactive Apply, never on
+a git push. Hence: set it by hand once, and it persists from then on.
+
+Giving the register its own database — a paid Render instance, or a free one from
+another provider — removes the constraint entirely. Point `DATABASE_URL` at it
+and drop `DATABASE_SCHEMA`.
+
+### Sharing a database safely
+
+`DATABASE_SCHEMA` (default `access_register`) keeps every table this app owns,
+including Prisma's own migration history, inside its own namespace, so it cannot
+collide with anything the other app keeps in `public`. To undo the whole thing,
+drop that one schema. `DATABASE_CONNECTION_LIMIT` (default 5) caps this app's
+pool so it cannot exhaust a shared instance and starve its neighbour.
+
+Both are only applied when the connection string does not already specify them,
+so a fully-qualified `DATABASE_URL` always wins.
+
+### After the first successful deploy
 
 Open the service's **Environment** tab and copy:
 
@@ -101,23 +129,18 @@ committed here. Sign in at `https://<your-service>.onrender.com/login`.
 before the server accepts traffic. It composes the connection string, applies
 pending migrations, ensures an active admin exists, and loads the demo data
 **only while the register is completely empty**. All of it is idempotent, so a
-restart or redeploy never reseeds and never resets a password.
+restart or redeploy never reseeds and never resets a password. Missing
+configuration prints a plain block naming the fix rather than a stack trace.
 
 `/api/health` is the health check. It runs a query, because a web process that
 cannot reach Postgres is not healthy in any useful sense.
-
-### Giving the register its own database later
-
-Replace the `fromDatabase` block with a `DATABASE_URL` set under Environment,
-and remove `DATABASE_SCHEMA`. Nothing else changes.
 
 ### Before you put real data in
 
 - Set `SEED_DEMO_DATA` to `false` and delete the demo vendors from the app.
   Everything seeded uses `@wosg.example` addresses, so it is easy to spot.
-- **`bis-db` is a free instance that expires and is deleted unless upgraded.**
-  Both this app and its owner go with it. Check the expiry date on the database
-  in Render.
+- **A free Render database expires and is deleted unless upgraded.** If this app
+  shares one, both go together. Check the expiry date on the database in Render.
 - **Leaver evidence uploads are lost on every deploy on the free plan.** Render's
   free instances have ephemeral storage. Uncomment the `disk:` block in
   `render.yaml`, move to a paid instance type, and set `EVIDENCE_STORAGE_DIR`
@@ -127,9 +150,8 @@ and remove `DATABASE_SCHEMA`. Nothing else changes.
 - The login form has no rate limiting or lockout. That is acceptable behind
   Entra SSO, which is the phase-2 plan; it is worth adding before this is
   internet-facing with local passwords and real data in it.
-- The register holds personal data, and `oregon` is a US region. Confirm that is
-  consistent with WOSG's data policy before loading anything real, and set a
-  backup schedule on the database.
+- The register holds personal data. Confirm the database's region is consistent
+  with WOSG's data policy before loading anything real, and set a backup schedule.
 
 ---
 

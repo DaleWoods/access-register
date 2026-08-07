@@ -1,23 +1,30 @@
 # Render Blueprint for the Third-Party Access Register.
 #
 # In Render: New → Blueprint → pick this repository → Apply.
-# Nothing to fill in by hand — the database is wired automatically, the same
-# way the bis-app Blueprint wires its own.
 #
-# WHY IT REUSES bis-db
+# ONE MANUAL STEP: set DATABASE_URL on the service, then Manual Deploy.
+#
 # Render allows a single free-tier Postgres per account, and this account's one
-# free database is `bis-db`. Declaring a second fails the whole sync with
-# "cannot have more than one active free tier database", so this Blueprint
-# points at the existing one instead.
+# free database is `bis-db`, created by the bis-app Blueprint. Two approaches
+# were tried and both failed:
+#
+#   declaring our own free database  -> "cannot have more than one active free
+#                                        tier database", failing the whole sync
+#   fromDatabase: name: bis-db       -> does not resolve across Blueprints, so
+#                                        DATABASE_URL stayed empty
+#
+# So DATABASE_URL is set by hand, once. Paste bis-db's Internal Database URL
+# exactly as Render gives it — no query string to add. The app defaults to the
+# `access_register` schema on its own (see src/lib/database-url.mjs).
 #
 # Sharing is safe: DATABASE_SCHEMA puts every table this app owns — including
 # Prisma's own migration history — inside an `access_register` schema, so it
 # cannot collide with anything bis-app keeps in `public`. To undo it entirely,
 # drop that one schema.
 #
-# To give the register its own database later, replace the fromDatabase block
-# with a plain connection string set under Environment, and drop
-# DATABASE_SCHEMA. See README.md → Deploying to Render.
+# To give the register its own database later, point DATABASE_URL at it and
+# drop DATABASE_SCHEMA. Nothing else changes.
+# See README.md → Deploying to Render.
 
 services:
   - type: web
@@ -39,14 +46,14 @@ services:
     healthCheckPath: /api/health
 
     envVars:
-      # The existing free Postgres, referenced by its Render name.
+      # Set by hand on the service, then Manual Deploy. Render only prompts for
+      # a sync: false value during an interactive Apply, never on a git push.
+      # Paste bis-db's Internal Database URL verbatim.
       - key: DATABASE_URL
-        fromDatabase:
-          name: bis-db
-          property: connectionString
+        sync: false
 
-      # Keeps this app's tables out of bis-app's way. Removing this would put
-      # them in `public` alongside bis-app's own.
+      # Keeps this app's tables out of bis-app's way. The app defaults to this
+      # value anyway, so it is belt and braces.
       - key: DATABASE_SCHEMA
         value: access_register
 

@@ -20,6 +20,17 @@
 const DEFAULT_CONNECTION_LIMIT = "5";
 
 /**
+ * Applied when DATABASE_URL names no schema of its own. Defaulting here rather
+ * than only in render.yaml means pasting a bare connection string is enough to
+ * get correct isolation — no query string to remember, and no dependency on a
+ * platform env var having been wired up.
+ *
+ * Development and test connection strings carry an explicit `?schema=public`,
+ * so they are unaffected.
+ */
+const DEFAULT_SCHEMA = "access_register";
+
+/**
  * @param {Record<string, string | undefined>} [env]
  * @returns {string | null}
  */
@@ -34,7 +45,7 @@ export function composeDatabaseUrl(env = process.env) {
 
   const extra = [];
 
-  const schema = (env.DATABASE_SCHEMA ?? "").trim();
+  const schema = (env.DATABASE_SCHEMA ?? DEFAULT_SCHEMA).trim();
   if (schema && !has("schema")) extra.push(`schema=${encodeURIComponent(schema)}`);
 
   const limit = (env.DATABASE_CONNECTION_LIMIT ?? DEFAULT_CONNECTION_LIMIT).trim();
