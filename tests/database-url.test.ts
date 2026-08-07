@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { composeDatabaseUrl, redactDatabaseUrl } from "@/lib/database-url.mjs";
+import {
+  composeDatabaseUrl,
+  redactDatabaseUrl,
+  toDirectDatabaseUrl,
+} from "@/lib/database-url.mjs";
 
 /**
  * The register shares a Postgres instance with another application in
@@ -73,5 +77,36 @@ describe("composeDatabaseUrl", () => {
     const redacted = redactDatabaseUrl(composeDatabaseUrl({ DATABASE_URL: BARE }));
     expect(redacted).not.toContain("s3cr3t");
     expect(redacted).toContain("bis:***@");
+  });
+});
+
+describe("pooled connection strings (Neon, Supabase)", () => {
+  const POOLED =
+    "postgresql://reg:pw@ep-cool-bird-123-pooler.eu-central-1.aws.neon.tech/register?sslmode=require";
+
+  it("tells Prisma when it is talking to a pooler", () => {
+    expect(must(composeDatabaseUrl({ DATABASE_URL: POOLED }))).toContain("pgbouncer=true");
+  });
+
+  it("does not add pgbouncer for a direct endpoint", () => {
+    const direct = POOLED.replace("-pooler.", ".");
+    expect(must(composeDatabaseUrl({ DATABASE_URL: direct }))).not.toContain("pgbouncer");
+  });
+
+  it("routes migrations to the direct endpoint, which a pooler cannot serve", () => {
+    const runtime = must(composeDatabaseUrl({ DATABASE_URL: POOLED }));
+    const migration = toDirectDatabaseUrl(runtime);
+
+    expect(migration).not.toContain("-pooler.");
+    expect(migration).not.toContain("pgbouncer");
+    // Everything else survives: credentials, database, ssl, schema.
+    expect(migration).toContain("reg:pw@ep-cool-bird-123.eu-central-1.aws.neon.tech/register");
+    expect(migration).toContain("sslmode=require");
+    expect(migration).toContain("schema=access_register");
+  });
+
+  it("leaves a non-pooled string completely alone", () => {
+    const plain = must(composeDatabaseUrl({ DATABASE_URL: BARE }));
+    expect(toDirectDatabaseUrl(plain)).toBe(plain);
   });
 });

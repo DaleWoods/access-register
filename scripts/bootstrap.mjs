@@ -14,7 +14,11 @@
 import { execFileSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { composeDatabaseUrl, redactDatabaseUrl } from "../src/lib/database-url.mjs";
+import {
+  composeDatabaseUrl,
+  redactDatabaseUrl,
+  toDirectDatabaseUrl,
+} from "../src/lib/database-url.mjs";
 
 const log = (message) => console.log(`[bootstrap] ${message}`);
 
@@ -71,7 +75,12 @@ async function main() {
   // Everything below — the Prisma CLI, the seed, and this script's own client —
   // reads DATABASE_URL from the environment, so compose it once here and let
   // child processes inherit it.
-  process.env.DATABASE_URL = composeDatabaseUrl();
+  //
+  // Migrations and seeding go to the direct endpoint: Prisma Migrate cannot run
+  // through a transaction-mode pooler. The web server is a separate process and
+  // composes its own URL, so it keeps using the pooled endpoint at runtime.
+  const runtimeUrl = composeDatabaseUrl();
+  process.env.DATABASE_URL = toDirectDatabaseUrl(runtimeUrl);
   log(`database: ${redactDatabaseUrl(process.env.DATABASE_URL)}`);
 
   log("applying database migrations");

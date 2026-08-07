@@ -65,34 +65,25 @@ Each criterion in section 7 of the requirements has a test named after it in
 
 ## Deploying to Render
 
-[`render.yaml`](./render.yaml) is a Blueprint: **New → Blueprint → pick this
-repository → Apply.** Nothing to set by hand. It declares its own database, so
-Render creates it and wires the connection string in automatically.
+The app runs on Render's free tier; the database is a free Postgres from Neon
+or Supabase. One value to set by hand, once.
 
-### Why the database is on a paid plan
+### 1. Create a free Postgres
 
-Render permits **one free-tier Postgres per account**. If that slot is already
-taken, a second `plan: free` fails the entire sync with `cannot have more than
-one active free tier database`.
+At [neon.tech](https://neon.tech): sign up, create a project, pick an **EU
+region** (the register holds UK staff names and email addresses). Copy the
+connection string it shows you.
 
-Sharing the existing free database instead was tried and does not work here
-either. Two independent reasons:
+### 2. Point the app at it
 
-| Attempt | Result |
-|---|---|
-| `fromDatabase` pointing at another Blueprint's database | Does not resolve across Blueprints — `DATABASE_URL` stayed empty |
-| Pasting that database's Internal URL by hand | `P1001: Can't reach database server` — the database is in one region, the service in another, and internal hostnames only resolve within a region |
+In Render → the **access-register** service → **Environment** → add
+`DATABASE_URL` and paste the string **exactly as given**. Then **Manual Deploy →
+Deploy latest commit**.
 
-A service's region **cannot be changed after creation**, so a region mismatch
-means recreating the service, not editing `render.yaml`.
+Nothing to append. The app adds its own schema, connection limit and, when the
+string is a pooled one, the pooler flag Prisma needs.
 
-If you would rather not pay for a Render database, use a free Postgres from
-another provider (Neon, Supabase). Delete the `databases:` block, set
-`DATABASE_URL` under Environment instead, and redeploy. That reintroduces one
-manual step but costs nothing. Paste the connection string exactly as given —
-the app adds its own schema parameter.
-
-### After the first deploy
+### 3. Sign in
 
 Open the service's **Environment** tab and copy:
 
@@ -103,33 +94,44 @@ Open the service's **Environment** tab and copy:
 Render generates both and shows them nowhere else, so nothing sensitive is
 committed here. Sign in at `https://<your-service>.onrender.com/login`.
 
-### What happens on each deploy
+### Why the database is not on Render
 
-`npm run start:render` runs [`scripts/bootstrap.mjs`](./scripts/bootstrap.mjs)
-before the server accepts traffic. It composes the connection string, applies
-pending migrations, ensures an active admin exists, and loads the demo data
-**only while the register is completely empty**. All of it is idempotent, so a
-restart or redeploy never reseeds and never resets a password. Missing
-configuration prints a plain block naming the fix rather than a stack trace.
+Render permits **one free-tier Postgres per account**, and on this account that
+slot is taken. Three ways round it were tried:
 
-`/api/health` is the health check. It runs a query, because a web process that
-cannot reach Postgres is not healthy in any useful sense.
+| Attempt | Result |
+|---|---|
+| Declare a second database with `plan: free` | `cannot have more than one active free tier database` — failed the whole sync |
+| `fromDatabase` pointing at the existing database | Does not resolve across Blueprints — `DATABASE_URL` stayed empty |
+| Paste that database's Internal URL by hand | `P1001: Can't reach database server` — it is in a different region from the service, and internal hostnames only resolve within one region |
+
+A service's region **cannot be changed after creation**, so the third is not
+fixable by editing `render.yaml`. An external database sidesteps all of it: the
+host is public, so region is a latency choice rather than a hard constraint.
+
+To move the database onto Render later, add a `databases:` block on a paid plan
+and point `DATABASE_URL` at it with `fromDatabase`. Nothing else changes.
 
 ### Connection string handling
 
 [`src/lib/database-url.mjs`](./src/lib/database-url.mjs) composes the effective
-URL, because Render supplies a bare connection string with no room for query
-parameters:
+URL, because a platform hands over a bare string with no room for parameters:
 
 - **schema** — defaults to `access_register`, so every table this app owns,
   including Prisma's migration history, sits in its own namespace. Correct
-  whether the database is dedicated or shared, and a shared one can be cleaned
-  up by dropping that single schema.
+  whether the database is dedicated or shared, and a shared one is cleaned up by
+  dropping that single schema.
 - **connection_limit** — defaults to 5, so the app cannot exhaust a small
   instance's connections.
+- **pgbouncer** — added when the host carries a `-pooler` suffix, so Prisma stops
+  caching prepared statements a transaction-mode pooler will not honour.
 
-Both are applied only when the URL does not already specify them, so a
-fully-qualified `DATABASE_URL` always wins. Composition is string-based rather
+Migrations are separately routed to the **direct** endpoint, because Prisma
+Migrate needs session state for advisory locks and DDL and cannot run through a
+pooler. The running app keeps using whichever endpoint it was given.
+
+Both parameters are applied only when the URL does not already specify them, so
+a fully-qualified `DATABASE_URL` always wins. Composition is string-based rather
 than by re-serialising a parsed URL, which would alter percent-encoding in the
 password and break authentication.
 
@@ -137,16 +139,18 @@ password and break authentication.
 
 - Set `SEED_DEMO_DATA` to `false` and delete the demo vendors from the app.
   Everything seeded uses `@wosg.example` addresses, so it is easy to spot.
-- **Leaver evidence uploads are lost on every deploy while the web service is on
-  the free plan** — Render's free instances have ephemeral storage. Uncomment the
-  `disk:` block in `render.yaml`, move to a paid instance type, and set
-  `EVIDENCE_STORAGE_DIR` to `/var/data/evidence`.
+- **Leaver evidence uploads are lost on every deploy on the free web plan** —
+  Render's free instances have ephemeral storage. Uncomment the `disk:` block in
+  `render.yaml`, move to a paid instance type, and set `EVIDENCE_STORAGE_DIR`
+  to `/var/data/evidence`.
 - Free web services sleep when idle, so the first request after a quiet spell
-  takes around 50 seconds.
+  takes around 50 seconds. Neon's free tier also suspends when idle and takes a
+  second or two to wake.
 - The login form has no rate limiting or lockout. That is acceptable behind
   Entra SSO, which is the phase-2 plan; it is worth adding before this is
   internet-facing with local passwords and real data in it.
-- Set a backup schedule on the database.
+- Confirm the database's region is consistent with WOSG's data policy, and set a
+  backup schedule.
 
 ---
 

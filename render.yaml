@@ -1,39 +1,30 @@
 # Render Blueprint for the Third-Party Access Register.
 #
 # In Render: New → Blueprint → pick this repository → Apply.
-# Nothing to set by hand — this Blueprint declares its own database, so Render
-# creates it and wires the connection string in, exactly as the bis-app
-# Blueprint does for bis-db.
 #
-# The database is on a paid plan on purpose. Render permits a single free-tier
-# Postgres per account and this account's is bis-db, so a second `plan: free`
-# fails the whole sync with "cannot have more than one active free tier
-# database". Sharing bis-db instead is not workable either: it lives in Oregon,
-# this service was created in Frankfurt, and Render cannot move an existing
-# service between regions — a Frankfurt service cannot resolve an Oregon
-# internal hostname.
+# ONE MANUAL STEP: set DATABASE_URL on the service, then Manual Deploy.
 #
-# Both resources are pinned to frankfurt: it matches the existing service, and
-# the register holds names and email addresses of UK staff.
-
-databases:
-  - name: access-register-db
-    databaseName: access_register
-    user: access_register
-    # Render's smallest paid Postgres. `free` is not available — see above.
-    plan: basic-256mb
-    region: frankfurt
-    # The register holds personal data, so no public ingress.
-    ipAllowList: []
+# This Blueprint deliberately does not declare a database. Render permits one
+# free-tier Postgres per account and this account's is bis-db, so a second
+# `plan: free` fails the whole sync. Sharing bis-db does not work either — it is
+# in Oregon, this service is in Frankfurt, internal hostnames only resolve
+# within a region, and a service's region cannot be changed after creation.
+#
+# So the database lives outside Render, on a free Postgres from Neon or
+# Supabase, and its connection string is pasted in once. Public hosts, so no
+# region constraint. See README.md → Deploying to Render for the walkthrough.
+#
+# To move it onto Render later, add a `databases:` block on a paid plan and
+# point DATABASE_URL at it with fromDatabase. Nothing else changes.
 
 services:
   - type: web
     name: access-register
     runtime: node
     plan: free
-    # Must match the database's region: Render supplies an internal hostname
-    # that only resolves inside one region. A service's region cannot be
-    # changed after creation, so this matches where the service already is.
+    # Where the service already exists; a region cannot be changed afterwards.
+    # The database is external and reached over a public host, so there is no
+    # region constraint — just pick an EU region for it to keep latency down.
     region: frankfurt
     branch: main
 
@@ -47,15 +38,15 @@ services:
     healthCheckPath: /api/health
 
     envVars:
-      # Wired automatically from the database declared above. Nothing to set.
+      # Set by hand on the service, then Manual Deploy. Render only prompts for
+      # a sync: false value during an interactive Apply, never on a git push.
+      # Paste the external database's connection string exactly as given.
       - key: DATABASE_URL
-        fromDatabase:
-          name: access-register-db
-          property: connectionString
+        sync: false
 
       # DATABASE_SCHEMA is deliberately unset: the app defaults to its own
-      # `access_register` schema, which is correct whether it has a database to
-      # itself or is sharing one. See src/lib/database-url.mjs.
+      # `access_register` schema, which is correct whether the database is
+      # dedicated or shared. See src/lib/database-url.mjs.
 
       # Signs the session cookie. Generated once and kept; changing it signs
       # everyone out.

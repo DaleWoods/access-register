@@ -53,8 +53,34 @@ export function composeDatabaseUrl(env = process.env) {
     extra.push(`connection_limit=${encodeURIComponent(limit)}`);
   }
 
+  // Prisma needs telling when it is talking to a transaction-mode pooler,
+  // otherwise it caches prepared statements the pooler will not honour.
+  if (/-pooler\./.test(base) && !has("pgbouncer")) extra.push("pgbouncer=true");
+
   if (extra.length === 0) return base;
   return `${base}${base.includes("?") ? "&" : "?"}${extra.join("&")}`;
+}
+
+/**
+ * The connection string to use for schema migrations.
+ *
+ * Neon (and other Postgres poolers) publish two endpoints: a pooled one whose
+ * host carries a `-pooler` suffix, and a direct one without it. Prisma Migrate
+ * cannot run through a transaction-mode pooler — it needs session state for
+ * advisory locks and DDL — so migrations are pointed at the direct endpoint
+ * while the running app keeps using whatever it was given.
+ *
+ * A connection string with no pooler in it is returned unchanged, so this is a
+ * no-op everywhere else.
+ *
+ * @param {string} url
+ * @returns {string}
+ */
+export function toDirectDatabaseUrl(url) {
+  return url
+    .replace(/-pooler\./, ".")
+    .replace(/([?&])pgbouncer=true(&|$)/, (_m, before, after) => (after ? before : ""))
+    .replace(/[?&]$/, "");
 }
 
 /**
