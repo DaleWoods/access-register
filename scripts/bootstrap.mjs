@@ -140,6 +140,29 @@ async function main() {
           },
         });
         log(`admin account created: ${email}`);
+      } else if (process.env.BOOTSTRAP_ADMIN_FORCE_RESET === "true") {
+        // Deliberate escape hatch for being locked out. Without it the only
+        // recovery from a forgotten admin password is direct database access,
+        // because the account is otherwise left untouched on every deploy.
+        // Setting it requires dashboard access, which is the same level of
+        // trust as being able to change DATABASE_URL.
+        if (password.length < MIN_ADMIN_PASSWORD_LENGTH) {
+          configurationError([
+            "BOOTSTRAP_ADMIN_FORCE_RESET is true, but",
+            `BOOTSTRAP_ADMIN_PASSWORD is ${password.length} character(s) —`,
+            `it must be at least ${MIN_ADMIN_PASSWORD_LENGTH}.`,
+          ]);
+        }
+        await prisma.appUser.update({
+          where: { email },
+          data: {
+            role: "ADMIN",
+            isActive: true,
+            passwordHash: await bcrypt.hash(password, 12),
+          },
+        });
+        log(`admin password RESET from BOOTSTRAP_ADMIN_PASSWORD: ${email}`);
+        log("set BOOTSTRAP_ADMIN_FORCE_RESET back to false once you are in");
       } else if (existing.role !== "ADMIN" || !existing.isActive) {
         // Restore access without touching the password — it may have been
         // changed in the app since, and a deploy should not undo that.
@@ -149,7 +172,11 @@ async function main() {
         });
         log(`existing account promoted to active admin: ${email}`);
       } else {
-        log(`admin account already present, password left alone: ${email}`);
+        log(
+          `admin account already present, password left alone: ${email} — ` +
+            "set BOOTSTRAP_ADMIN_FORCE_RESET=true to reset it from " +
+            "BOOTSTRAP_ADMIN_PASSWORD on the next deploy",
+        );
       }
     }
 

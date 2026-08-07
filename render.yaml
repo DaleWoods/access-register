@@ -61,6 +61,12 @@ services:
       - key: BOOTSTRAP_ADMIN_PASSWORD
         generateValue: true
 
+      # Locked out? Set this to "true", set BOOTSTRAP_ADMIN_PASSWORD to what you
+      # want, deploy, sign in, then set it back to "false". Left off, an
+      # existing admin's password is never touched by a deploy.
+      - key: BOOTSTRAP_ADMIN_FORCE_RESET
+        value: "false"
+
       # Loads the demo vendors, people and accounts, but only while the
       # register is completely empty. Set this to "false" before putting real
       # data in, and delete the demo vendors from the app.
