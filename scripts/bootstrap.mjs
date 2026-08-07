@@ -22,6 +22,13 @@ import {
 
 const log = (message) => console.log(`[bootstrap] ${message}`);
 
+/**
+ * Long enough to survive a public URL with no rate limiting in front of it.
+ * The admin account can do everything, including reading every name and email
+ * address in the register.
+ */
+const MIN_ADMIN_PASSWORD_LENGTH = 12;
+
 function run(command, args) {
   execFileSync(command, args, { stdio: "inherit" });
 }
@@ -88,39 +95,72 @@ async function main() {
 
   const prisma = new PrismaClient();
   try {
-    const adminCount = await prisma.appUser.count({ where: { role: "ADMIN", isActive: true } });
+    // Make sure the *named* admin exists. Checking for "any admin at all"
+    // would be wrong: once demo data has created one, the person the
+    // deployment is actually for would never get an account.
+    const email = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
+    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? "";
 
-    if (adminCount === 0) {
-      const email = (process.env.BOOTSTRAP_ADMIN_EMAIL ?? "").trim().toLowerCase();
-      const password = process.env.BOOTSTRAP_ADMIN_PASSWORD ?? "";
+    if (email) {
+      const existing = await prisma.appUser.findUnique({ where: { email } });
 
-      if (!email || password.length < 12) {
-        log(
-          "WARNING: no active admin exists and BOOTSTRAP_ADMIN_EMAIL / " +
-            "BOOTSTRAP_ADMIN_PASSWORD (12+ chars) are not both set. " +
-            "Nobody will be able to sign in.",
-        );
-      } else {
-        // Upsert rather than create: the address may already exist with a
-        // non-admin role, or from a previous partial deploy.
-        await prisma.appUser.upsert({
-          where: { email },
-          create: {
+      if (!existing) {
+        // A register nobody can sign in to is not a working deployment, so a
+        // password too weak to create the account fails the deploy rather than
+        // warning and coming up green.
+        if (password.length < MIN_ADMIN_PASSWORD_LENGTH) {
+          configurationError([
+            `BOOTSTRAP_ADMIN_PASSWORD must be at least ${MIN_ADMIN_PASSWORD_LENGTH} characters.`,
+            password.length === 0
+              ? "It is not set at all."
+              : `The current value is ${password.length} character(s) long.`,
+            "",
+            `There is no account for ${email} yet, and it cannot be created`,
+            "with that password. An admin can read every name and email address",
+            "in the register, and this app is reachable on a public URL with no",
+            "rate limiting, so a short password is not survivable.",
+            "",
+            "In the Render dashboard:",
+            "  1. Open this service → Environment → BOOTSTRAP_ADMIN_PASSWORD.",
+            "  2. Set a value of 12 characters or more. Use Generate rather than",
+            "     choosing one, then copy it — it is shown nowhere else.",
+            "  3. Manual Deploy → Deploy latest commit.",
+            "",
+            "If demo data is loaded you can also sign in as admin@wosg.example",
+            "using the SEED_PASSWORD value, which is already a full admin.",
+          ]);
+        }
+
+        await prisma.appUser.create({
+          data: {
             email,
             fullName: process.env.BOOTSTRAP_ADMIN_NAME ?? "Administrator",
             role: "ADMIN",
             passwordHash: await bcrypt.hash(password, 12),
           },
-          update: {
-            role: "ADMIN",
-            isActive: true,
-            passwordHash: await bcrypt.hash(password, 12),
-          },
         });
-        log(`admin account ready: ${email}`);
+        log(`admin account created: ${email}`);
+      } else if (existing.role !== "ADMIN" || !existing.isActive) {
+        // Restore access without touching the password — it may have been
+        // changed in the app since, and a deploy should not undo that.
+        await prisma.appUser.update({
+          where: { email },
+          data: { role: "ADMIN", isActive: true },
+        });
+        log(`existing account promoted to active admin: ${email}`);
+      } else {
+        log(`admin account already present, password left alone: ${email}`);
       }
-    } else {
-      log(`${adminCount} active admin(s) already present, leaving accounts alone`);
+    }
+
+    const adminCount = await prisma.appUser.count({ where: { role: "ADMIN", isActive: true } });
+    if (adminCount === 0) {
+      configurationError([
+        "There are no active admin accounts, so nobody can sign in.",
+        "",
+        "Set BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD under",
+        `Environment (${MIN_ADMIN_PASSWORD_LENGTH}+ characters), then Manual Deploy.`,
+      ]);
     }
 
     // Demo data is only ever loaded into an empty register, so it can never

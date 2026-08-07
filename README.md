@@ -85,6 +85,9 @@ string is a pooled one, the pooler flag Prisma needs.
 
 ### 3. Sign in
 
+`BOOTSTRAP_ADMIN_PASSWORD` must be **12 characters or more**, or the deploy
+fails rather than coming up with no way in. Let Render generate it.
+
 Open the service's **Environment** tab and copy:
 
 - `BOOTSTRAP_ADMIN_PASSWORD` — for the admin account, whose address is
