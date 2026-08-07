@@ -99,6 +99,21 @@ memory and connection limit.
 Create a Postgres on a paid plan, or use any other provider, and paste that
 connection string instead. No schema parameter needed.
 
+### If the deploy fails with "DATABASE_URL is not set"
+
+`DATABASE_URL` is marked `sync: false`, which means Render only prompts for it
+during an **interactive Blueprint Apply**. A sync triggered by a git push cannot
+prompt, so the service gets created with the value empty, the start command
+refuses to run, and the sync reports `deploy failed`.
+
+Fix it in the dashboard:
+
+1. Open the **access-register** service → **Environment**.
+2. Add `DATABASE_URL` with your connection string (see the two options above).
+3. **Manual Deploy → Deploy latest commit.**
+
+The deploy log states this explicitly when the value is missing.
+
 ### After the first deploy
 
 Open the service's **Environment** tab and copy:

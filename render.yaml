@@ -47,6 +47,11 @@ services:
 
     envVars:
       # Set during Apply. See the note at the top of this file.
+      #
+      # Render only prompts for a sync: false value during an interactive
+      # Blueprint Apply. A sync triggered by a git push cannot prompt, so this
+      # is left empty and the deploy fails on purpose rather than starting a
+      # register with no database. Set it under Environment, then Manual Deploy.
       - key: DATABASE_URL
         sync: false
 
