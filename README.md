@@ -97,6 +97,47 @@ Open the service's **Environment** tab and copy:
 Render generates both and shows them nowhere else, so nothing sensitive is
 committed here. Sign in at `https://<your-service>.onrender.com/login`.
 
+### If you cannot sign in
+
+The bootstrap creates the account named by `BOOTSTRAP_ADMIN_EMAIL` when it does
+not exist, and otherwise **leaves it completely alone** — so a redeploy never
+undoes a password changed inside the app. The consequence is that changing
+`BOOTSTRAP_ADMIN_PASSWORD` after the account exists has no effect. The deploy log
+says which happened:
+
+```
+[bootstrap] admin account created: someone@example.com
+[bootstrap] admin account already present, password left alone: someone@example.com
+```
+
+Two ways back in, neither needing database access:
+
+1. **From inside the app.** Sign in as any other admin and reset the password on
+   the **Admin** page. With demo data loaded, `admin@wosg.example` and the
+   `SEED_PASSWORD` value is a full admin.
+2. **From the platform.** Set `BOOTSTRAP_ADMIN_FORCE_RESET` to `true`, set
+   `BOOTSTRAP_ADMIN_PASSWORD` to what you want, deploy, sign in, then set it back
+   to `false`. The log confirms with
+   `admin password RESET from BOOTSTRAP_ADMIN_PASSWORD`.
+
+### What happens on each deploy
+
+`npm run start:render` runs [`scripts/bootstrap.mjs`](./scripts/bootstrap.mjs)
+before the server accepts traffic. It composes the connection string, applies
+pending migrations, ensures the named admin exists and is active, and loads the
+demo data **only while the register is completely empty**.
+
+It checks for that *named* account rather than "any admin at all", because once
+demo data has created one, the person the deployment is actually for would never
+get an account.
+
+All of it is idempotent. Missing or unusable configuration fails the deploy with
+a plain block naming the fix, rather than a stack trace or a green deploy nobody
+can sign in to.
+
+`/api/health` is the health check. It runs a query, because a web process that
+cannot reach Postgres is not healthy in any useful sense.
+
 ### Why the database is not on Render
 
 Render permits **one free-tier Postgres per account**, and on this account that
