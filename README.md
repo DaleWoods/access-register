@@ -66,53 +66,33 @@ Each criterion in section 7 of the requirements has a test named after it in
 ## Deploying to Render
 
 [`render.yaml`](./render.yaml) is a Blueprint: **New → Blueprint → pick this
-repository → Apply.** There is exactly **one** manual step.
+repository → Apply.** Nothing to set by hand. It declares its own database, so
+Render creates it and wires the connection string in automatically.
 
-### Set DATABASE_URL, once
+### Why the database is on a paid plan
 
-1. Open your Postgres in Render → **Connect** → copy the **Internal Database URL**.
-2. Open the **access-register** service → **Environment** → add `DATABASE_URL`
-   and paste it **exactly as given**. Nothing to append.
-3. **Manual Deploy → Deploy latest commit.**
+Render permits **one free-tier Postgres per account**. If that slot is already
+taken, a second `plan: free` fails the entire sync with `cannot have more than
+one active free tier database`.
 
-The app puts its own tables in an `access_register` schema by itself, so the
-bare connection string is enough. See
-[`src/lib/database-url.mjs`](./src/lib/database-url.mjs).
-
-The service's `region` in `render.yaml` must match the database's, because an
-internal hostname only resolves inside one region. If they differ, either change
-`region:` or use the **External** Database URL instead.
-
-### Why this step cannot be automated away
-
-Render allows one free-tier Postgres per account, and this account's is `bis-db`,
-owned by the bis-app Blueprint. Two ways to avoid the manual step were tried,
-and both failed:
+Sharing the existing free database instead was tried and does not work here
+either. Two independent reasons:
 
 | Attempt | Result |
 |---|---|
-| Declare our own database with `plan: free` | `cannot have more than one active free tier database` — failed the whole sync |
-| `fromDatabase: name: bis-db` | Does not resolve a database owned by a *different* Blueprint, so `DATABASE_URL` stayed empty |
+| `fromDatabase` pointing at another Blueprint's database | Does not resolve across Blueprints — `DATABASE_URL` stayed empty |
+| Pasting that database's Internal URL by hand | `P1001: Can't reach database server` — the database is in one region, the service in another, and internal hostnames only resolve within a region |
 
-A `sync: false` value is only prompted for during an interactive Apply, never on
-a git push. Hence: set it by hand once, and it persists from then on.
+A service's region **cannot be changed after creation**, so a region mismatch
+means recreating the service, not editing `render.yaml`.
 
-Giving the register its own database — a paid Render instance, or a free one from
-another provider — removes the constraint entirely. Point `DATABASE_URL` at it
-and drop `DATABASE_SCHEMA`.
+If you would rather not pay for a Render database, use a free Postgres from
+another provider (Neon, Supabase). Delete the `databases:` block, set
+`DATABASE_URL` under Environment instead, and redeploy. That reintroduces one
+manual step but costs nothing. Paste the connection string exactly as given —
+the app adds its own schema parameter.
 
-### Sharing a database safely
-
-`DATABASE_SCHEMA` (default `access_register`) keeps every table this app owns,
-including Prisma's own migration history, inside its own namespace, so it cannot
-collide with anything the other app keeps in `public`. To undo the whole thing,
-drop that one schema. `DATABASE_CONNECTION_LIMIT` (default 5) caps this app's
-pool so it cannot exhaust a shared instance and starve its neighbour.
-
-Both are only applied when the connection string does not already specify them,
-so a fully-qualified `DATABASE_URL` always wins.
-
-### After the first successful deploy
+### After the first deploy
 
 Open the service's **Environment** tab and copy:
 
@@ -135,23 +115,38 @@ configuration prints a plain block naming the fix rather than a stack trace.
 `/api/health` is the health check. It runs a query, because a web process that
 cannot reach Postgres is not healthy in any useful sense.
 
+### Connection string handling
+
+[`src/lib/database-url.mjs`](./src/lib/database-url.mjs) composes the effective
+URL, because Render supplies a bare connection string with no room for query
+parameters:
+
+- **schema** — defaults to `access_register`, so every table this app owns,
+  including Prisma's migration history, sits in its own namespace. Correct
+  whether the database is dedicated or shared, and a shared one can be cleaned
+  up by dropping that single schema.
+- **connection_limit** — defaults to 5, so the app cannot exhaust a small
+  instance's connections.
+
+Both are applied only when the URL does not already specify them, so a
+fully-qualified `DATABASE_URL` always wins. Composition is string-based rather
+than by re-serialising a parsed URL, which would alter percent-encoding in the
+password and break authentication.
+
 ### Before you put real data in
 
 - Set `SEED_DEMO_DATA` to `false` and delete the demo vendors from the app.
   Everything seeded uses `@wosg.example` addresses, so it is easy to spot.
-- **A free Render database expires and is deleted unless upgraded.** If this app
-  shares one, both go together. Check the expiry date on the database in Render.
-- **Leaver evidence uploads are lost on every deploy on the free plan.** Render's
-  free instances have ephemeral storage. Uncomment the `disk:` block in
-  `render.yaml`, move to a paid instance type, and set `EVIDENCE_STORAGE_DIR`
-  to `/var/data/evidence`.
+- **Leaver evidence uploads are lost on every deploy while the web service is on
+  the free plan** — Render's free instances have ephemeral storage. Uncomment the
+  `disk:` block in `render.yaml`, move to a paid instance type, and set
+  `EVIDENCE_STORAGE_DIR` to `/var/data/evidence`.
 - Free web services sleep when idle, so the first request after a quiet spell
   takes around 50 seconds.
 - The login form has no rate limiting or lockout. That is acceptable behind
   Entra SSO, which is the phase-2 plan; it is worth adding before this is
   internet-facing with local passwords and real data in it.
-- The register holds personal data. Confirm the database's region is consistent
-  with WOSG's data policy before loading anything real, and set a backup schedule.
+- Set a backup schedule on the database.
 
 ---
 

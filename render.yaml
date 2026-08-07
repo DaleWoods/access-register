@@ -1,39 +1,40 @@
 # Render Blueprint for the Third-Party Access Register.
 #
 # In Render: New → Blueprint → pick this repository → Apply.
+# Nothing to set by hand — this Blueprint declares its own database, so Render
+# creates it and wires the connection string in, exactly as the bis-app
+# Blueprint does for bis-db.
 #
-# ONE MANUAL STEP: set DATABASE_URL on the service, then Manual Deploy.
+# The database is on a paid plan on purpose. Render permits a single free-tier
+# Postgres per account and this account's is bis-db, so a second `plan: free`
+# fails the whole sync with "cannot have more than one active free tier
+# database". Sharing bis-db instead is not workable either: it lives in Oregon,
+# this service was created in Frankfurt, and Render cannot move an existing
+# service between regions — a Frankfurt service cannot resolve an Oregon
+# internal hostname.
 #
-# Render allows a single free-tier Postgres per account, and this account's one
-# free database is `bis-db`, created by the bis-app Blueprint. Two approaches
-# were tried and both failed:
-#
-#   declaring our own free database  -> "cannot have more than one active free
-#                                        tier database", failing the whole sync
-#   fromDatabase: name: bis-db       -> does not resolve across Blueprints, so
-#                                        DATABASE_URL stayed empty
-#
-# So DATABASE_URL is set by hand, once. Paste bis-db's Internal Database URL
-# exactly as Render gives it — no query string to add. The app defaults to the
-# `access_register` schema on its own (see src/lib/database-url.mjs).
-#
-# Sharing is safe: DATABASE_SCHEMA puts every table this app owns — including
-# Prisma's own migration history — inside an `access_register` schema, so it
-# cannot collide with anything bis-app keeps in `public`. To undo it entirely,
-# drop that one schema.
-#
-# To give the register its own database later, point DATABASE_URL at it and
-# drop DATABASE_SCHEMA. Nothing else changes.
-# See README.md → Deploying to Render.
+# Both resources are pinned to frankfurt: it matches the existing service, and
+# the register holds names and email addresses of UK staff.
+
+databases:
+  - name: access-register-db
+    databaseName: access_register
+    user: access_register
+    # Render's smallest paid Postgres. `free` is not available — see above.
+    plan: basic-256mb
+    region: frankfurt
+    # The register holds personal data, so no public ingress.
+    ipAllowList: []
 
 services:
   - type: web
     name: access-register
     runtime: node
     plan: free
-    # Must match bis-db's region, because the connection string Render supplies
-    # is an internal hostname that only resolves inside one region.
-    region: oregon
+    # Must match the database's region: Render supplies an internal hostname
+    # that only resolves inside one region. A service's region cannot be
+    # changed after creation, so this matches where the service already is.
+    region: frankfurt
     branch: main
 
     # --include=dev is deliberate: Render sets NODE_ENV=production, which makes
@@ -46,21 +47,15 @@ services:
     healthCheckPath: /api/health
 
     envVars:
-      # Set by hand on the service, then Manual Deploy. Render only prompts for
-      # a sync: false value during an interactive Apply, never on a git push.
-      # Paste bis-db's Internal Database URL verbatim.
+      # Wired automatically from the database declared above. Nothing to set.
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: access-register-db
+          property: connectionString
 
-      # Keeps this app's tables out of bis-app's way. The app defaults to this
-      # value anyway, so it is belt and braces.
-      - key: DATABASE_SCHEMA
-        value: access_register
-
-      # Caps the connection pool so this app cannot exhaust a shared instance's
-      # connections and starve bis-app.
-      - key: DATABASE_CONNECTION_LIMIT
-        value: "5"
+      # DATABASE_SCHEMA is deliberately unset: the app defaults to its own
+      # `access_register` schema, which is correct whether it has a database to
+      # itself or is sharing one. See src/lib/database-url.mjs.
 
       # Signs the session cookie. Generated once and kept; changing it signs
       # everyone out.
