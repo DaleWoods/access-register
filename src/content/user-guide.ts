@@ -11,7 +11,7 @@
  * and GUIDE_UPDATED are updated with it.
  */
 
-export const GUIDE_UPDATED = "2026-08-07";
+export const GUIDE_UPDATED = "2026-08-08";
 
 export type GuideCallout = {
   tone: "info" | "warn" | "tip";
@@ -181,12 +181,13 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     covers: ["/import"],
     roles: ["Admin", "Vendor owner"],
     paragraphs: [
-      "The import is the main way data arrives, and it is deliberately a review step rather than a sync. Nothing touches the register until you press Commit.",
+      "There is no live connection to any vendor. Data arrives because somebody exports it from the vendor's own admin screens and uploads that file here, one vendor at a time. This is the main way the register is kept current.",
+      "Start either from the Import tab and pick the vendor, or from Vendors by pressing Upload data on the one you are working through — that lands here with the vendor already chosen. Either way it is deliberately a review step rather than a sync: nothing touches the register until you press Commit.",
     ],
     steps: [
       {
         title: "1. Choose the vendor and the data",
-        body: "Pick the vendor, and the instance if that vendor has several portals. Upload a CSV or paste straight from a spreadsheet. Scoping to an instance matters: one portal's export must not mark another portal's accounts as disappeared.",
+        body: "Pick the vendor, and the instance if that vendor has several portals. Coming from a vendor's Upload data button, both are already filled in. Upload a CSV exported from the vendor, or paste straight from a spreadsheet. Scoping to an instance matters: one portal's export must not mark another portal's accounts as disappeared.",
       },
       {
         title: "2. Confirm the column mapping",
@@ -232,6 +233,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     paragraphs: [
       "A vendor is a third-party system. Give each one an accountable owner: they get its accounts to review and can run its imports.",
       "Use instances where one vendor has several portals or tenants — a separate payment portal per retail brand, for example. Imports and the disappeared check are scoped per instance.",
+      "The vendor list doubles as a record of which vendors are up to date. Each row shows when its data was last uploaded, ageing to amber past ninety days, and carries an Upload data button that takes you straight into the import with that vendor selected. Vendors captured by hand show “Entered by hand” instead, because there is no export to upload for them.",
     ],
     points: [
       {

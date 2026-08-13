@@ -19,9 +19,20 @@ type Vendor = {
  * mapping. The saved mapping for a vendor is applied automatically, so a
  * routine monthly import is upload-then-review.
  */
-export function ImportWizard({ vendors }: { vendors: Vendor[] }) {
+export function ImportWizard({
+  vendors,
+  initialVendorId,
+  initialInstanceId,
+}: {
+  vendors: Vendor[];
+  /** From ?vendorId=, so "Upload data" on a vendor lands on that vendor. */
+  initialVendorId?: string;
+  initialInstanceId?: string;
+}) {
   const [state, formAction] = useActionState<UploadState, FormData>(inspectUpload, {});
-  const [vendorId, setVendorId] = useState(vendors[0]?.id ?? "");
+  const [vendorId, setVendorId] = useState(
+    vendors.find((v) => v.id === initialVendorId)?.id ?? vendors[0]?.id ?? "",
+  );
 
   const vendor = vendors.find((v) => v.id === (state.vendorId ?? vendorId)) ?? vendors[0];
 
@@ -60,7 +71,15 @@ export function ImportWizard({ vendors }: { vendors: Vendor[] }) {
 
         <div>
           <label className="label">Instance</label>
-          <select name="instanceId" className="input" disabled={!vendor?.instances.length}>
+          <select
+            name="instanceId"
+            className="input"
+            disabled={!vendor?.instances.length}
+            defaultValue={
+              vendor?.instances.some((i) => i.id === initialInstanceId) ? initialInstanceId : ""
+            }
+            key={vendor?.id}
+          >
             <option value="">
               {vendor?.instances.length ? "None — vendor-wide" : "This vendor has no instances"}
             </option>

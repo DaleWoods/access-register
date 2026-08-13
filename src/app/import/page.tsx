@@ -7,7 +7,15 @@ import { ImportWizard } from "./import-wizard";
 
 export const dynamic = "force-dynamic";
 
-export default async function ImportPage() {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+function one(params: Record<string, string | string[] | undefined>, key: string) {
+  const value = params[key];
+  return (Array.isArray(value) ? value[0] : value) ?? undefined;
+}
+
+export default async function ImportPage({ searchParams }: Props) {
+  const params = await searchParams;
   const user = await requireUser();
   const scope = vendorScope(toActor(user));
 
@@ -73,7 +81,11 @@ export default async function ImportPage() {
           </div>
         </Card>
       ) : (
-        <ImportWizard vendors={vendors} />
+        <ImportWizard
+          vendors={vendors}
+          initialVendorId={one(params, "vendorId")}
+          initialInstanceId={one(params, "instanceId")}
+        />
       )}
 
       <div className="mt-6">

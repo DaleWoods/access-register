@@ -2,7 +2,8 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser, toActor } from "@/lib/auth/guards";
 import { isAdmin, vendorScope } from "@/lib/auth/policy";
-import { Card, EmptyState, PageHeader } from "@/components/ui";
+import { Card, EmptyState, PageHeader, formatDate } from "@/components/ui";
+import { canWrite } from "@/lib/auth/policy";
 import { VendorForm } from "./vendor-form";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default async function VendorsPage() {
   const user = await requireUser();
   const scope = vendorScope(toActor(user));
+  const editable = canWrite(user.role);
 
   const [vendors, owners] = await Promise.all([
     prisma.vendor.findMany({
@@ -29,6 +31,14 @@ export default async function VendorsPage() {
         owner: { select: { fullName: true } },
         instances: { select: { id: true, isArchived: true } },
         _count: { select: { accessRecords: true, columnMappings: true } },
+        // The most recent committed upload, so the list doubles as a record of
+        // which vendors are up to date and which have been forgotten.
+        importBatches: {
+          where: { status: "COMMITTED" },
+          orderBy: { importedAt: "desc" },
+          take: 1,
+          select: { importedAt: true, sourceFilename: true, rowCount: true },
+        },
       },
     }),
     prisma.appUser.findMany({
@@ -45,8 +55,10 @@ export default async function VendorsPage() {
         subtitle="Each third-party system, who owns it, how its data is captured, and which fields it actually exposes."
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      {/* The list is the primary content and has grown a column, so it gets the
+          full width; adding a vendor is occasional and sits underneath. */}
+      <div className="space-y-4">
+        <div>
           <Card title={`${vendors.length} vendors`} className="overflow-hidden">
             {vendors.length === 0 ? (
               <EmptyState>No vendors yet.</EmptyState>
@@ -62,7 +74,8 @@ export default async function VendorsPage() {
                       <th>Instances</th>
                       <th>Accounts</th>
                       <th>Exposes last login</th>
-                      <th>Review every</th>
+                      <th>Last upload</th>
+                      {editable ? <th>Upload</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -98,7 +111,22 @@ export default async function VendorsPage() {
                             </span>
                           )}
                         </td>
-                        <td className="text-xs">{vendor.reviewFrequencyMonths} months</td>
+                        <td className="whitespace-nowrap text-xs">
+                          <LastUpload
+                            batch={vendor.importBatches[0]}
+                            captureMethod={vendor.captureMethod}
+                          />
+                        </td>
+                        {editable ? (
+                          <td>
+                            <Link
+                              href={`/import?vendorId=${vendor.id}`}
+                              className="btn-secondary btn-sm whitespace-nowrap"
+                            >
+                              Upload data
+                            </Link>
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                   </tbody>
@@ -109,11 +137,40 @@ export default async function VendorsPage() {
         </div>
 
         {isAdmin(user.role) ? (
-          <div>
+          <div className="max-w-2xl">
             <VendorForm owners={owners} />
           </div>
         ) : null}
       </div>
     </>
+  );
+}
+
+/**
+ * When this vendor's data was last uploaded. Vendors captured by hand have no
+ * export to upload, so they are called out rather than shown as overdue.
+ */
+function LastUpload({
+  batch,
+  captureMethod,
+}: {
+  batch?: { importedAt: Date | null; sourceFilename: string; rowCount: number };
+  captureMethod: string;
+}) {
+  if (captureMethod === "MANUAL_READ") {
+    return <span className="text-slate-400">Entered by hand</span>;
+  }
+  if (!batch?.importedAt) {
+    return <span className="blank-cell">Never uploaded</span>;
+  }
+
+  const days = Math.floor((Date.now() - batch.importedAt.getTime()) / 86_400_000);
+  return (
+    <span title={`${batch.sourceFilename} — ${batch.rowCount} rows`}>
+      {formatDate(batch.importedAt)}
+      <span className={days > 90 ? "ml-1 text-amber-600" : "ml-1 text-slate-400"}>
+        ({days === 0 ? "today" : `${days}d ago`})
+      </span>
+    </span>
   );
 }

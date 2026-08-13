@@ -61,7 +61,7 @@ export default async function VendorPage({ params }: { params: Promise<{ id: str
             </Link>
             {editable ? (
               <Link href={`/import?vendorId=${id}`} className="btn-primary">
-                Import
+                Upload data
               </Link>
             ) : null}
             {isAdmin(user.role) ? (
