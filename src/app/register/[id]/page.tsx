@@ -15,11 +15,19 @@ import {
 import { RecordForm } from "./record-form";
 import { MatchPersonPanel } from "./match-person";
 import { HistoryTable } from "@/components/history-table";
+import { SavedNotice } from "@/components/saved-notice";
 
 export const dynamic = "force-dynamic";
 
-export default async function RecordPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function RecordPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
   const user = await requireUser();
 
   const record = await prisma.accessRecord.findUnique({
@@ -84,6 +92,8 @@ export default async function RecordPage({ params }: { params: Promise<{ id: str
           </>
         }
       />
+
+      <SavedNotice searchParams={query} />
 
       {!editable ? (
         <div className="mb-4">

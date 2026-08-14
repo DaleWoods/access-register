@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import type { AppRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -38,6 +39,7 @@ export async function createAppUser(formData: FormData): Promise<void> {
     summary: `app user created: ${fullName} <${email}> as ${role}`,
   });
   revalidatePath("/admin");
+  redirect("/admin");
 }
 
 export async function setUserRole(formData: FormData): Promise<void> {
@@ -65,6 +67,7 @@ export async function setUserRole(formData: FormData): Promise<void> {
     fields: ["role"],
   });
   revalidatePath("/admin");
+  redirect("/admin");
 }
 
 export async function toggleUserActive(formData: FormData): Promise<void> {
@@ -92,6 +95,7 @@ export async function toggleUserActive(formData: FormData): Promise<void> {
     fields: ["isActive"],
   });
   revalidatePath("/admin");
+  redirect("/admin");
 }
 
 export async function resetUserPassword(formData: FormData): Promise<void> {
@@ -118,6 +122,7 @@ export async function resetUserPassword(formData: FormData): Promise<void> {
     newValue: "password reset by an administrator",
   });
   revalidatePath("/admin");
+  redirect("/admin");
 }
 
 export async function saveAppSettings(formData: FormData): Promise<void> {
@@ -142,4 +147,5 @@ export async function saveAppSettings(formData: FormData): Promise<void> {
   revalidatePath("/admin");
   revalidatePath("/");
   revalidatePath("/register");
+  redirect("/admin?saved=1");
 }

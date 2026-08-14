@@ -154,6 +154,7 @@ export async function updateStagedRow(formData: FormData): Promise<void> {
 
   await prisma.stagedRow.update({ where: { id: rowId }, data });
   revalidatePath(`/import/${row.batchId}`);
+  redirect(`/import/${row.batchId}`);
 }
 
 /** Bulk decisions across the whole staged batch. */
@@ -189,6 +190,7 @@ export async function bulkStagedDecision(formData: FormData): Promise<void> {
   }
 
   revalidatePath(`/import/${batchId}`);
+  redirect(`/import/${batchId}`);
 }
 
 export async function toggleDisappeared(formData: FormData): Promise<void> {
@@ -204,6 +206,7 @@ export async function toggleDisappeared(formData: FormData): Promise<void> {
     data: { confirmRemove: !candidate.confirmRemove },
   });
   revalidatePath(`/import/${candidate.batchId}`);
+  redirect(`/import/${candidate.batchId}`);
 }
 
 export async function commitStagedBatch(formData: FormData): Promise<void> {

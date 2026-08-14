@@ -111,6 +111,10 @@ export async function updatePerson(formData: FormData): Promise<void> {
 
   revalidatePath(`/people/${id}`);
   revalidatePath("/people");
+  // Redirect rather than fall through to a re-render. Falling through leaves
+  // the form showing the values it was rendered with, so a saved change looks
+  // like it was rejected — and saving again writes the stale value back.
+  redirect(`/people/${id}?saved=1`);
 }
 
 /**
@@ -244,4 +248,5 @@ export async function splitAccountFromPerson(formData: FormData): Promise<void> 
 
   revalidatePath("/people");
   revalidatePath(`/register/${recordId}`);
+  redirect(`/register/${recordId}`);
 }

@@ -11,7 +11,7 @@
  * and GUIDE_UPDATED are updated with it.
  */
 
-export const GUIDE_UPDATED = "2026-08-08";
+export const GUIDE_UPDATED = "2026-08-09";
 
 export type GuideCallout = {
   tone: "info" | "warn" | "tip";
@@ -92,12 +92,12 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     covers: ["/"],
     paragraphs: [
       "The dashboard is the standing view of where the estate is uncomfortable. Every tile is a saved filter over the register rather than a separate calculation, so clicking one shows exactly the accounts behind the number — and you can export precisely that.",
-      "Leavers with access is the headline figure. It is the count of accounts belonging to people marked as having left, and the number an auditor will ask about first.",
+      "Leavers with access is the headline figure: how many people have left and still hold live access. It is the number an auditor will ask about first. Where those people hold more than one account between them, the tile also names the account total, because the accounts are the work.",
     ],
     callouts: [
       {
         tone: "tip",
-        body: "Recalculate flags re-runs the rule engine over every account. Use it after changing the dormancy threshold or a vendor's exposure settings.",
+        body: "Recalculate flags re-runs the rule engine over every account and confirms when it is done. Editing a person or an account already recalculates what it needs to, so this is only for a sweep after changing the dormancy threshold or a vendor's exposure settings.",
       },
     ],
   },
@@ -170,7 +170,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       },
       {
         term: "Employee status",
-        body: "Active, Left or Unknown. Setting someone to Left immediately flags every live account they hold.",
+        body: "Active, Left or Unknown. Setting someone to Left immediately flags every live account they hold, and they appear on the dashboard and the Leavers screen straight away — there is no need to recalculate flags by hand.",
       },
     ],
   },

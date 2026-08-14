@@ -53,6 +53,7 @@ export async function saveLeaverAction(formData: FormData): Promise<void> {
 
   const caseId = String(formData.get("caseId") ?? "");
   revalidatePath(`/leavers/${caseId}`);
+  redirect(`/leavers/${caseId}`);
 }
 
 async function storeEvidence(leaverActionId: string, file: File): Promise<void> {
@@ -89,4 +90,5 @@ export async function finishLeaverCase(formData: FormData): Promise<void> {
 
   await closeLeaverCase({ caseId, user });
   revalidatePath(`/leavers/${caseId}`);
+  redirect(`/leavers/${caseId}`);
 }

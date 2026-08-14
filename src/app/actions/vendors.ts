@@ -110,6 +110,7 @@ export async function updateVendor(formData: FormData): Promise<void> {
 
   revalidatePath(`/vendors/${id}`);
   revalidatePath("/vendors");
+  redirect(`/vendors/${id}?saved=1`);
 }
 
 /**
@@ -199,6 +200,7 @@ export async function createInstance(formData: FormData): Promise<void> {
   });
 
   revalidatePath(`/vendors/${vendorId}`);
+  redirect(`/vendors/${vendorId}`);
 }
 
 export async function archiveInstance(formData: FormData): Promise<void> {
@@ -221,6 +223,7 @@ export async function archiveInstance(formData: FormData): Promise<void> {
   });
 
   revalidatePath(`/vendors/${instance.vendorId}`);
+  redirect(`/vendors/${instance.vendorId}`);
 }
 
 export async function archiveVendor(formData: FormData): Promise<void> {
@@ -245,6 +248,7 @@ export async function archiveVendor(formData: FormData): Promise<void> {
 
   revalidatePath("/vendors");
   revalidatePath(`/vendors/${id}`);
+  redirect(`/vendors/${id}`);
 }
 
 export async function deleteColumnMapping(formData: FormData): Promise<void> {
@@ -254,4 +258,5 @@ export async function deleteColumnMapping(formData: FormData): Promise<void> {
 
   await prisma.columnMapping.delete({ where: { id: mappingId } });
   revalidatePath(`/vendors/${mapping.vendorId}`);
+  redirect(`/vendors/${mapping.vendorId}`);
 }

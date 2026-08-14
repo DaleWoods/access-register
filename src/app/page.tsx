@@ -6,10 +6,16 @@ import { getSettings } from "@/lib/settings";
 import { FLAGS } from "@/lib/flags";
 import { Alert, Card, EmptyState, PageHeader, Stat, formatDate } from "@/components/ui";
 import { refreshFlags } from "@/app/actions/records";
+import { SavedNotice } from "@/components/saved-notice";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const query = await searchParams;
   const user = await requireUser();
   const settings = await getSettings();
   const scope = aggregateScope(toActor(user), settings.vendorOwnerAggregateAccess);
@@ -22,6 +28,7 @@ export default async function DashboardPage() {
     unverifiable,
     unmatched,
     leaversWithAccess,
+    leaversWithAccessPeople,
     neverReviewed,
     reviewOverdue,
     expiringSoon,
@@ -39,6 +46,14 @@ export default async function DashboardPage() {
     }),
     prisma.accessRecord.count({
       where: { ...vendorFilter, flags: { has: FLAGS.leaverWithAccess } },
+    }),
+    // "Leavers" means people, which is what someone reading the tile expects.
+    // The accounts figure sits alongside it, because that is the work.
+    prisma.person.count({
+      where: {
+        employeeStatus: "LEFT",
+        accessRecords: { some: { ...vendorFilter, accountStatus: { not: "REMOVED" } } },
+      },
     }),
     prisma.accessRecord.count({ where: { ...vendorFilter, flags: { has: FLAGS.neverReviewed } } }),
     prisma.accessRecord.count({ where: { ...vendorFilter, flags: { has: FLAGS.reviewOverdue } } }),
@@ -87,11 +102,16 @@ export default async function DashboardPage() {
         }
       />
 
+      <SavedNotice searchParams={query}>
+        Flags recalculated across every account.
+      </SavedNotice>
+
       {leaversWithAccess > 0 ? (
         <div className="mb-4">
           <Alert tone="error" title="Leavers with access">
-            {leaversWithAccess} account{leaversWithAccess === 1 ? "" : "s"} belong to people marked
-            as having left.{" "}
+            {leaversWithAccessPeople} {leaversWithAccessPeople === 1 ? "person has" : "people have"}{" "}
+            left and still hold access, across {leaversWithAccess} account
+            {leaversWithAccess === 1 ? "" : "s"}.{" "}
             <Link href={`/register?flag=${FLAGS.leaverWithAccess}`} className="link">
               Review them now
             </Link>
@@ -113,9 +133,13 @@ export default async function DashboardPage() {
         <Stat label="Active accounts" value={totalActive} href="/register?accountStatus=ACTIVE" />
         <Stat label="Removed" value={totalRemoved} href="/register?accountStatus=REMOVED" />
         <Stat
-          label="Leavers with access"
-          value={leaversWithAccess}
-          tone={leaversWithAccess ? "danger" : "good"}
+          label={
+            leaversWithAccess === leaversWithAccessPeople
+              ? "Leavers with access"
+              : `Leavers with access (${leaversWithAccess} accounts)`
+          }
+          value={leaversWithAccessPeople}
+          tone={leaversWithAccessPeople ? "danger" : "good"}
           href={`/register?flag=${FLAGS.leaverWithAccess}`}
         />
         <Stat

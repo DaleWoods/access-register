@@ -158,6 +158,7 @@ export async function updateRecord(formData: FormData): Promise<void> {
 
   revalidatePath(`/register/${id}`);
   revalidatePath("/register");
+  redirect(`/register/${id}?saved=1`);
 }
 
 /** "Yes, I have looked at this and it is correct." Drives review-overdue flags. */
@@ -182,6 +183,7 @@ export async function confirmRecord(formData: FormData): Promise<void> {
   });
   await refreshFlagsForRecords([id]);
   revalidatePath(`/register/${id}`);
+  redirect(`/register/${id}?saved=1`);
 }
 
 /**
@@ -226,6 +228,7 @@ export async function linkRecordToPerson(formData: FormData): Promise<void> {
 
   revalidatePath(`/register/${id}`);
   revalidatePath("/people");
+  redirect(`/register/${id}?saved=1`);
 }
 
 /**
@@ -253,6 +256,7 @@ export async function markRecordRemoved(formData: FormData): Promise<void> {
   });
   await refreshFlagsForRecords([id]);
   revalidatePath(`/register/${id}`);
+  redirect(`/register/${id}?saved=1`);
 }
 
 export async function refreshFlags(): Promise<void> {
@@ -261,4 +265,7 @@ export async function refreshFlags(): Promise<void> {
   await refreshAllFlags();
   revalidatePath("/register");
   revalidatePath("/");
+  // Redirect so the recalculated counts are rendered fresh; without it the
+  // dashboard re-renders from the pre-recalculation tree and looks unchanged.
+  redirect("/?flags=recalculated");
 }

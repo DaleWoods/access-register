@@ -143,6 +143,7 @@ export async function recordReviewOutcome(formData: FormData): Promise<void> {
 
   await refreshFlagsForRecords([item.accessRecordId]);
   revalidatePath(`/reviews/${item.cycleId}`);
+  redirect(`/reviews/${item.cycleId}`);
 }
 
 export async function closeReviewCycle(formData: FormData): Promise<void> {
@@ -174,4 +175,5 @@ export async function closeReviewCycle(formData: FormData): Promise<void> {
 
   revalidatePath(`/reviews/${cycleId}`);
   revalidatePath("/reviews");
+  redirect(`/reviews/${cycleId}`);
 }

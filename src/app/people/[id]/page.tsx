@@ -15,6 +15,7 @@ import {
   formatDateTime,
 } from "@/components/ui";
 import { HistoryTable } from "@/components/history-table";
+import { SavedNotice } from "@/components/saved-notice";
 import { PersonForm } from "./person-form";
 import { MergePanel } from "./merge-panel";
 
@@ -28,8 +29,15 @@ export const dynamic = "force-dynamic";
  * including removed ones — because "what did they used to have" is an audit
  * question too.
  */
-export default async function PersonPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PersonPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
   const user = await requireUser();
 
   const person = await prisma.person.findUnique({
@@ -118,6 +126,8 @@ export default async function PersonPage({ params }: { params: Promise<{ id: str
           </>
         }
       />
+
+      <SavedNotice searchParams={query} />
 
       {person.employeeStatus === "LEFT" && live.length > 0 ? (
         <div className="mb-4">
