@@ -4,6 +4,11 @@ import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import type { AppRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  accountLockState,
+  registerFailedAttempt,
+  registerSuccessfulAttempt,
+} from "@/lib/auth/rate-limit";
 
 const COOKIE_NAME = "ar_session";
 const MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
@@ -31,28 +36,46 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   return bcrypt.compare(plain, hash);
 }
 
+export type AuthResult =
+  | { ok: true; user: SessionUser }
+  | { ok: false; reason: "invalid" }
+  | { ok: false; reason: "locked"; retryAfterMinutes: number };
+
 /**
  * Validate credentials against the local user store.
  *
  * Phase 2 replaces this with an OIDC code exchange against Microsoft Entra;
  * see `src/lib/auth/entra.ts`. Everything downstream of `createSession` is
  * identity-provider agnostic, so only this function changes.
+ *
+ * Five wrong passwords in a row locks the account for fifteen minutes,
+ * independent of whether the password given this time happens to be correct —
+ * a stolen-but-now-changed password should not walk straight past a lockout.
+ * See lib/auth/rate-limit.ts for the per-IP limit that sits alongside this.
  */
-export async function authenticateLocal(
-  email: string,
-  password: string,
-): Promise<SessionUser | null> {
+export async function authenticateLocal(email: string, password: string): Promise<AuthResult> {
   const user = await prisma.appUser.findUnique({
     where: { email: email.trim().toLowerCase() },
   });
+
   // Always run a hash comparison so a missing user and a wrong password take
   // roughly the same time.
   const hash = user?.passwordHash ?? "$2a$12$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinva";
   const ok = await verifyPassword(password, hash);
 
-  if (!user || !user.passwordHash || !user.isActive || !ok) return null;
+  if (!user || !user.passwordHash || !user.isActive) return { ok: false, reason: "invalid" };
 
-  return { id: user.id, email: user.email, fullName: user.fullName, role: user.role };
+  const lock = accountLockState(user.lockedUntil);
+  if (lock.locked) return { ok: false, reason: "locked", retryAfterMinutes: lock.retryAfterMinutes };
+
+  if (!ok) {
+    const result = await registerFailedAttempt(user.id);
+    if (result.locked) return { ok: false, reason: "locked", retryAfterMinutes: result.retryAfterMinutes };
+    return { ok: false, reason: "invalid" };
+  }
+
+  await registerSuccessfulAttempt(user.id);
+  return { ok: true, user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role } };
 }
 
 export async function createSession(user: SessionUser): Promise<void> {

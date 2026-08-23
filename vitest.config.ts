@@ -20,6 +20,12 @@ export default defineConfig({
     fileParallelism: false,
   },
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      // The real "server-only" package throws unconditionally — Next's
+      // bundler swaps it for a no-op in server compilations, but Vitest has
+      // no such split. See tests/stubs/server-only.ts.
+      "server-only": path.resolve(__dirname, "./tests/stubs/server-only.ts"),
+    },
   },
 });

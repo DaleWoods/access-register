@@ -81,3 +81,6 @@ them only deliberately:
   import may suggest; it must never apply a guess.
 - **Imports are transactional and idempotent.** Re-importing an unchanged export
   writes no field changes and no audit events.
+- **A password reset always clears the login lockout in the same write** —
+  from the Admin screen, or via `BOOTSTRAP_ADMIN_FORCE_RESET`. Otherwise the
+  new password is refused until the old lockout runs out on its own.

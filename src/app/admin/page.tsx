@@ -3,7 +3,15 @@ import { requireUser } from "@/lib/auth/guards";
 import { getSettings } from "@/lib/settings";
 import { ROLE_LABELS, isAdmin } from "@/lib/auth/policy";
 import { AccessDenied, Alert, Card, PageHeader, formatDateTime } from "@/components/ui";
-import { createAppUser, resetUserPassword, saveAppSettings, setUserRole, toggleUserActive } from "@/app/actions/admin";
+import {
+  createAppUser,
+  resetUserPassword,
+  saveAppSettings,
+  setUserRole,
+  toggleUserActive,
+  unlockAccount,
+} from "@/app/actions/admin";
+import { accountLockState } from "@/lib/auth/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -41,11 +49,14 @@ export default async function AdminPage() {
                     <th>Role</th>
                     <th>Vendors owned</th>
                     <th>Created</th>
+                    <th>Sign-in</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
+                  {users.map((user) => {
+                    const lock = accountLockState(user.lockedUntil);
+                    return (
                     <tr key={user.id} className={user.isActive ? "" : "opacity-50"}>
                       <td className="font-medium">
                         {user.fullName}
@@ -72,13 +83,38 @@ export default async function AdminPage() {
                       <td className="tabular-nums">{user._count.ownedVendors}</td>
                       <td className="text-xs">{formatDateTime(user.createdAt)}</td>
                       <td>
-                        <div className="flex gap-1">
+                        {lock.locked ? (
+                          <span
+                            className="badge bg-red-100 text-red-800"
+                            title={`${user.failedLoginAttempts} failed attempts`}
+                          >
+                            Locked ({lock.retryAfterMinutes}m)
+                          </span>
+                        ) : user.failedLoginAttempts > 0 ? (
+                          <span className="text-xs text-amber-600">
+                            {user.failedLoginAttempts} failed attempt
+                            {user.failedLoginAttempts === 1 ? "" : "s"}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex flex-wrap gap-1">
                           <form action={toggleUserActive}>
                             <input type="hidden" name="userId" value={user.id} />
                             <button type="submit" className="btn-secondary btn-sm">
                               {user.isActive ? "Disable" : "Enable"}
                             </button>
                           </form>
+                          {lock.locked ? (
+                            <form action={unlockAccount}>
+                              <input type="hidden" name="userId" value={user.id} />
+                              <button type="submit" className="btn-secondary btn-sm">
+                                Unlock
+                              </button>
+                            </form>
+                          ) : null}
                           <form action={resetUserPassword} className="flex gap-1">
                             <input type="hidden" name="userId" value={user.id} />
                             <input
@@ -94,7 +130,8 @@ export default async function AdminPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

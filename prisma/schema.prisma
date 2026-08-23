@@ -143,6 +143,13 @@ model AppUser {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  /// Consecutive wrong-password attempts since the last success. Resets on
+  /// successful sign-in. Drives account lockout — see lib/auth/rate-limit.ts.
+  failedLoginAttempts Int       @default(0)
+  /// Set once failedLoginAttempts crosses the threshold; sign-in is refused
+  /// until this passes, regardless of whether the password given is correct.
+  lockedUntil         DateTime?
+
   ownedVendors    Vendor[]      @relation("VendorOwner")
   vendorGrants    VendorGrant[]
   importBatches   ImportBatch[]
@@ -557,4 +564,19 @@ model AppSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+/// One row per sign-in attempt, keyed by client IP rather than by account.
+/// Account lockout (on AppUser) stops someone brute-forcing one known email;
+/// this stops someone spraying many guesses across many emails from one
+/// machine, which per-account lockout alone would not catch. Rows older than
+/// the rate-limit window are deleted opportunistically on each check, so this
+/// never needs its own cleanup job at this volume.
+model LoginAttempt {
+  id          String   @id @default(uuid())
+  ip          String
+  succeeded   Boolean
+  attemptedAt DateTime @default(now())
+
+  @@index([ip, attemptedAt])
 }

@@ -142,10 +142,12 @@ async function main() {
         log(`admin account created: ${email}`);
       } else if (process.env.BOOTSTRAP_ADMIN_FORCE_RESET === "true") {
         // Deliberate escape hatch for being locked out. Without it the only
-        // recovery from a forgotten admin password is direct database access,
-        // because the account is otherwise left untouched on every deploy.
-        // Setting it requires dashboard access, which is the same level of
-        // trust as being able to change DATABASE_URL.
+        // recovery from a forgotten admin password — or from the sole admin
+        // tripping the login lockout with no other admin to unlock them from
+        // inside the app — is direct database access, because the account is
+        // otherwise left untouched on every deploy. Setting it requires
+        // dashboard access, which is the same level of trust as being able to
+        // change DATABASE_URL.
         if (password.length < MIN_ADMIN_PASSWORD_LENGTH) {
           configurationError([
             "BOOTSTRAP_ADMIN_FORCE_RESET is true, but",
@@ -159,9 +161,16 @@ async function main() {
             role: "ADMIN",
             isActive: true,
             passwordHash: await bcrypt.hash(password, 12),
+            // A reset must also clear a login lockout, or the freshly reset
+            // password is still refused until the lockout timer runs out —
+            // exactly the "stolen but changed" case authenticateLocal guards
+            // against, except here it is the legitimate owner resetting it.
+            failedLoginAttempts: 0,
+            lockedUntil: null,
           },
         });
         log(`admin password RESET from BOOTSTRAP_ADMIN_PASSWORD: ${email}`);
+        log("any login lockout on this account was cleared too");
         log("set BOOTSTRAP_ADMIN_FORCE_RESET back to false once you are in");
       } else if (existing.role !== "ADMIN" || !existing.isActive) {
         // Restore access without touching the password — it may have been

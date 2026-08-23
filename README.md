@@ -190,11 +190,11 @@ password and break authentication.
 - Free web services sleep when idle, so the first request after a quiet spell
   takes around 50 seconds. Neon's free tier also suspends when idle and takes a
   second or two to wake.
-- The login form has no rate limiting or lockout. That is acceptable behind
-  Entra SSO, which is the phase-2 plan; it is worth adding before this is
-  internet-facing with local passwords and real data in it.
 - Confirm the database's region is consistent with WOSG's data policy, and set a
   backup schedule.
+- There is still no automated alert on repeated lockouts. An admin currently
+  finds out by looking at the Admin screen's Sign-in column, not by being told.
+  Worth adding once notifications (§3.12) exist.
 
 ---
 
@@ -246,6 +246,34 @@ unchanged export a genuine no-op rather than a wave of spurious edits.
 
 Removal is `accountStatus = REMOVED`. History is retained. Person merges tombstone the losing
 record and point it at the survivor, so old links and audit rows still resolve.
+
+### Login is rate-limited two ways, because the two attacks are different
+
+Five wrong passwords locks an account for fifteen minutes — including against the *correct*
+password, because a stolen-but-since-changed password must not walk straight past a lockout
+that is already running. That stops someone brute-forcing one known email (typically an
+admin's). Separately, sign-ins are rate-limited per client IP regardless of which account is
+being tried, which is what stops someone spraying guesses across many emails from one machine —
+per-account lockout alone would never trip if no single account gets more than a couple of
+guesses. See `src/lib/auth/rate-limit.ts`.
+
+An admin can see a lock (and how many failed attempts led to it) on the Admin screen, and clear
+it with Unlock without touching the password. Resetting the password clears a lock at the same
+time — a reset that left the old lockout standing would refuse the new password too. The same
+rule applies to the platform-level recovery path in `scripts/bootstrap.mjs`
+(`BOOTSTRAP_ADMIN_FORCE_RESET`): it clears the lock as part of resetting the password, since it
+exists specifically to get the sole admin back in when there is nobody else to press Unlock.
+
+### Every response carries a strict, per-request Content-Security-Policy
+
+`src/middleware.ts` generates a fresh nonce on every request and forwards it to Next's own
+inline bootstrap scripts, so `script-src` needs no `'unsafe-inline'` — anything an attacker
+injects without the nonce is refused outright. `style-src` keeps `'unsafe-inline'` for two
+`style={{ width }}` progress bars, which is a far smaller risk than a script and not worth
+plumbing a nonce through client components for. The remaining security headers
+(`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`,
+`Strict-Transport-Security`) don't vary per request, so they live as static config in
+`next.config.ts` instead.
 
 ---
 

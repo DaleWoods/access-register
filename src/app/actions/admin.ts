@@ -110,7 +110,10 @@ export async function resetUserPassword(formData: FormData): Promise<void> {
 
   await prisma.appUser.update({
     where: { id: userId },
-    data: { passwordHash: await hashPassword(password) },
+    // A reset also clears any lockout: a locked account with a freshly reset
+    // password would otherwise still refuse the new password until the
+    // lockout timer ran out on its own.
+    data: { passwordHash: await hashPassword(password), failedLoginAttempts: 0, lockedUntil: null },
   });
 
   // The event records that a reset happened; the value itself is never logged.
@@ -120,6 +123,28 @@ export async function resetUserPassword(formData: FormData): Promise<void> {
     context,
     field: "passwordHash",
     newValue: "password reset by an administrator",
+  });
+  revalidatePath("/admin");
+  redirect("/admin");
+}
+
+/** Clears a lockout without touching the password, for a legitimate user who mistyped it too many times. */
+export async function unlockAccount(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const context = { actor: actorFrom(admin), source: "MANUAL" as const, correlationId: newCorrelationId() };
+  const userId = String(formData.get("userId") ?? "");
+
+  await prisma.appUser.update({
+    where: { id: userId },
+    data: { failedLoginAttempts: 0, lockedUntil: null },
+  });
+
+  await recordEvent({
+    entityType: "AppUser",
+    entityId: userId,
+    context,
+    field: "lockedUntil",
+    newValue: "lockout cleared by an administrator",
   });
   revalidatePath("/admin");
   redirect("/admin");

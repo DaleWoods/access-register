@@ -11,7 +11,7 @@
  * and GUIDE_UPDATED are updated with it.
  */
 
-export const GUIDE_UPDATED = "2026-08-09";
+export const GUIDE_UPDATED = "2026-08-23";
 
 export type GuideCallout = {
   tone: "info" | "warn" | "tip";
@@ -81,7 +81,12 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       {
         tone: "info",
         title: "Signing in",
-        body: "Local email and password for now. Single sign-on with Microsoft Entra is a later phase. If you are locked out, another admin can reset your password on the Admin screen.",
+        body: "Local email and password for now. Single sign-on with Microsoft Entra is a later phase.",
+      },
+      {
+        tone: "warn",
+        title: "Five wrong passwords locks the account for fifteen minutes",
+        body: "This applies even to the correct password once the lock is active — a stolen-but-since-changed password must not walk straight past a lockout that is already running. Another admin can see the lock on the Admin screen and clear it with Unlock, without needing to reset the password. Repeated failed sign-ins from one network are also rate-limited, independent of which account is being tried.",
       },
     ],
   },
@@ -330,6 +335,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     roles: ["Admin"],
     paragraphs: [
       "Add app users, set their role, disable them, or reset a password. The system will not let you remove the last active admin.",
+      "The Sign-in column shows failed attempts and, once an account has locked itself out after five wrong passwords, a Locked badge with the time remaining. Unlock clears the lockout without changing the password — use it for a genuine user who mistyped it too many times. Resetting the password clears any lockout at the same time.",
     ],
     points: [
       {

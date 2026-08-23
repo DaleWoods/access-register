@@ -70,6 +70,9 @@ describe("the user guide keeps up with the app", () => {
     expect(text).toContain("dormant");
     // Disappeared accounts are never removed without confirmation.
     expect(text).toContain("disappeared");
+    // Login lockout, and that an admin can clear it without a password reset.
+    expect(text).toContain("locks the account");
+    expect(text).toContain("unlock");
   });
 
   it("is structurally sound", () => {

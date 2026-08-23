@@ -37,6 +37,12 @@ They are what the acceptance criteria in the requirements rest on:
 - Imports never remove an account or attach it to a person without an explicit
   human decision. Fuzzy name matches are suggestions only.
 - Import commits are transactional and idempotent.
+- A password reset — from the Admin screen or via `BOOTSTRAP_ADMIN_FORCE_RESET`
+  — always clears `failedLoginAttempts`/`lockedUntil` in the same write. A
+  reset that left an old lockout standing would refuse the new password too.
+- Every response carries the CSP set by `src/middleware.ts`. If a change needs
+  an inline `<script>`, wire the nonce through rather than adding
+  `'unsafe-inline'` to `script-src`.
 
 ## Verifying changes
 
