@@ -80,6 +80,19 @@ services:
       - key: EVIDENCE_STORAGE_DIR
         value: ./storage/evidence
 
+      # Email notifications (the daily vendor-owner digest). All three are
+      # optional — without them the app runs fine and Admin just shows the
+      # digest as "not configured". See README.md → Email notifications.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: NOTIFICATIONS_FROM_EMAIL
+        sync: false
+      # Shared secret the GitHub Actions schedule presents to trigger the
+      # digest. Generate any random string and put the same value in the
+      # repo's CRON_SECRET Actions secret.
+      - key: CRON_SECRET
+        generateValue: true
+
       - key: NODE_VERSION
         value: "22"
 

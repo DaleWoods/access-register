@@ -194,7 +194,50 @@ password and break authentication.
   backup schedule.
 - There is still no automated alert on repeated lockouts. An admin currently
   finds out by looking at the Admin screen's Sign-in column, not by being told.
-  Worth adding once notifications (§3.12) exist.
+
+---
+
+## Email notifications
+
+A daily digest emails each vendor owner about newly dormant accounts, leavers
+who still have access, accounts expiring soon, and review cycles that are due
+soon or overdue. Every condition is emailed once, the day it becomes true, not
+every day it stays true — see `src/lib/notifications/digest.ts`.
+
+This needs three things, all optional — without them the app runs exactly as
+before and the Admin screen just shows the digest as not configured:
+
+### 1. An email provider (Resend)
+
+Sign up at [resend.com](https://resend.com) (free tier: 3,000 emails/month) and
+create an API key. For real use, verify your own sending domain there too —
+without a verified domain Resend's sandbox only delivers to the address you
+signed up with.
+
+Set on the Render service:
+
+- `RESEND_API_KEY` — the API key
+- `NOTIFICATIONS_FROM_EMAIL` — the address digests are sent from, e.g.
+  `"Access Register <register@wosg.example>"`
+
+### 2. Something to trigger it daily
+
+The app is just a web service with no scheduler of its own, so
+`.github/workflows/daily-digest.yml` calls `POST /api/cron/notifications` once
+a day via a GitHub Actions schedule. It needs two **repository secrets**
+(Settings → Secrets and variables → Actions on this repo):
+
+- `APP_URL` — the deployed app's URL, e.g. `https://access-register.onrender.com`
+- `CRON_SECRET` — any random string; the route only runs when the request's
+  `Authorization: Bearer <value>` matches. `render.yaml` generates one on the
+  service automatically — copy that value in from the Render dashboard's
+  Environment tab.
+
+### 3. Checking it actually works
+
+Admin → **Email notifications** has a **Send digest now** button that runs the
+identical check on demand — no need to wait for the schedule, or set up the
+GitHub Actions secrets first, just to see what it would say.
 
 ---
 
@@ -275,6 +318,15 @@ plumbing a nonce through client components for. The remaining security headers
 `Strict-Transport-Security`) don't vary per request, so they live as static config in
 `next.config.ts` instead.
 
+### The email digest notifies once per condition, never once a day
+
+Recalculating flags is idempotent by design — safe to run constantly — but a naive "email
+everyone with an active flag" job would resend the same alert every single day for as long as the
+condition holds, which trains vendor owners to ignore it. `NotificationLog` records `(entity,
+condition)` pairs already alerted on; the digest only emails a pair with no row yet, and deletes
+the row once the underlying flag or review state clears, so the same condition can fire again if
+it recurs later. See `src/lib/notifications/digest.ts`.
+
 ---
 
 ## How it is put together
@@ -292,6 +344,8 @@ src/lib/
   export.ts                   CSV and Excel generation
   auth/policy.ts              pure RBAC decisions (unit-tested)
   auth/guards.ts              server-side enforcement
+  notifications/digest.ts     the daily email digest, and its notify-once logic
+  notifications/email.ts      Resend API wrapper
   import/
     parse.ts                  CSV/paste parsing and the messy-date reader
     normalise.ts              mapping application and validation
@@ -313,7 +367,8 @@ vendors and instances · AccessRecord CRUD and manual entry · CSV import with s
 diff preview · person layer with the cross-vendor view, manual matching, merge and split ·
 dormant/unverifiable/expiry flagging · leaver workflow with evidence upload and report ·
 append-only audit log · auditor read-only role · CSV and Excel export of any view · dashboard ·
-saved views · review cycles with challenge prompts and progress tracking.
+saved views · review cycles with challenge prompts and progress tracking · email digest for new
+dormant/leaver/expiring flags and review cycles due or overdue.
 
 **Not built — deliberately, these are later phases in the requirements:**
 
@@ -324,10 +379,10 @@ saved views · review cycles with challenge prompts and progress tracking.
 - **HR reconciliation.** The `hrReference` field and the `Left`/`Unknown` employee statuses are
   in place, and the leavers-with-access report already works off them. What is missing is the
   bulk import of an HR active-employee list to set those statuses automatically.
-- **Notifications** (review-due reminders, expiry warnings). Everything they would report on is
-  computed and visible in the app; only the sending is absent.
 - **Vendor API pulls** — phase 3, and explicitly a spot-check against the manual truth rather
   than a live feed.
+- **Alerting on repeated login lockouts.** The digest above covers register conditions, not this —
+  see "Known limitations".
 
 ### Known limitations
 

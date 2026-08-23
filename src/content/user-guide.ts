@@ -342,6 +342,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     paragraphs: [
       "Add app users, set their role, disable them, or reset a password. The system will not let you remove the last active admin.",
       "The Sign-in column shows failed attempts and, once an account has locked itself out after five wrong passwords, a Locked badge with the time remaining. Unlock clears the lockout without changing the password — use it for a genuine user who mistyped it too many times. Resetting the password clears any lockout at the same time.",
+      "Email notifications tell each vendor owner about newly dormant accounts, leavers who still have access, accounts expiring soon, and reviews due soon or overdue — one email per condition, the day it starts being true, never a repeat while it stays true. A daily scheduled job triggers it in production; the Send digest now button on this page runs the identical check on demand, useful for confirming it is wired up correctly.",
     ],
     points: [
       {
@@ -359,6 +360,10 @@ export const GUIDE_SECTIONS: GuideSection[] = [
       {
         term: "Vendor owner aggregate access",
         body: "Whether vendor owners see whole-estate totals read-only, or only their own vendors.",
+      },
+      {
+        term: "Review \"due soon\" window",
+        body: "How far ahead of a review cycle's due date the email digest starts warning its vendor owners.",
       },
     ],
     callouts: [

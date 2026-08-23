@@ -20,7 +20,7 @@ export async function resetDatabase(): Promise<void> {
       "ReviewItem", "ReviewCycle",
       "DisappearedCandidate", "StagedRow", "ImportBatch", "ColumnMapping",
       "AccessRecord", "Person", "VendorInstance", "VendorGrant", "Vendor",
-      "SavedView", "AuditEvent", "AppUser", "AppSetting", "LoginAttempt"
+      "SavedView", "AuditEvent", "AppUser", "AppSetting", "LoginAttempt", "NotificationLog"
     RESTART IDENTITY CASCADE
   `);
 
@@ -41,6 +41,7 @@ export async function makeVendor(
     exposesLastLogin: boolean;
     exposesPasswordExpiry: boolean;
     reviewFrequencyMonths: number;
+    ownerUserId: string;
   }> = {},
 ) {
   return prisma.vendor.create({
@@ -51,6 +52,7 @@ export async function makeVendor(
       exposesLastLogin: overrides.exposesLastLogin ?? true,
       exposesPasswordExpiry: overrides.exposesPasswordExpiry ?? false,
       reviewFrequencyMonths: overrides.reviewFrequencyMonths ?? 3,
+      ownerUserId: overrides.ownerUserId,
     },
   });
 }

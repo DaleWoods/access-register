@@ -10,6 +10,8 @@ export type AppSettings = {
   vendorOwnerAggregateAccess: boolean;
   /** 0-1. Fuzzy name matches below this are not even suggested. */
   fuzzyMatchThreshold: number;
+  /** The daily email digest flags a review cycle "due soon" inside this window. */
+  reviewDueSoonDays: number;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   expiryWindowDays: 30,
   vendorOwnerAggregateAccess: true,
   fuzzyMatchThreshold: 0.86,
+  reviewDueSoonDays: 7,
 };
 
 const SETTINGS_KEY = "app";

@@ -1,0 +1,32 @@
+name: Daily notification digest
+
+# The app itself has no scheduler — it's just a web service — so this is what
+# makes the email digest actually run once a day. See README.md → Email
+# notifications for the two repository secrets this needs (APP_URL,
+# CRON_SECRET) and how they're set.
+
+on:
+  schedule:
+    # 07:00 UTC daily. GitHub Actions cron can run a few minutes late under
+    # load; that's fine, nothing here is time-critical to the minute.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the digest endpoint
+        run: |
+          status=$(curl -sS -o /tmp/response.json -w "%{http_code}" -X POST \
+            "${APP_URL}/api/cron/notifications" \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+          cat /tmp/response.json
+          echo
+          if [ "$status" -ge 300 ]; then
+            echo "Digest endpoint returned HTTP $status"
+            exit 1
+          fi
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

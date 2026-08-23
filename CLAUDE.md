@@ -43,6 +43,10 @@ They are what the acceptance criteria in the requirements rest on:
 - Every response carries the CSP set by `src/middleware.ts`. If a change needs
   an inline `<script>`, wire the nonce through rather than adding
   `'unsafe-inline'` to `script-src`.
+- The email digest notifies once per condition, not once a day while it holds.
+  A new alert kind must write a `NotificationLog` row and check for an existing
+  one first, and must delete the row once the condition clears — otherwise
+  either nothing gets sent, or the same person gets emailed forever.
 
 ## Verifying changes
 

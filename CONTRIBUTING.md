@@ -84,3 +84,6 @@ them only deliberately:
 - **A password reset always clears the login lockout in the same write** —
   from the Admin screen, or via `BOOTSTRAP_ADMIN_FORCE_RESET`. Otherwise the
   new password is refused until the old lockout runs out on its own.
+- **The email digest notifies once per condition, not once a day it holds.**
+  Every alert kind checks `NotificationLog` before sending and deletes its row
+  once the condition clears, so it can fire again if the same thing recurs.

@@ -580,3 +580,23 @@ model LoginAttempt {
 
   @@index([ip, attemptedAt])
 }
+
+/// Tracks which (entity, condition) pairs the daily email digest has already
+/// alerted someone about, so a condition that stays true is emailed once —
+/// not every day it remains unresolved. Deleted once the condition clears, so
+/// it notifies again if the same thing happens a second time.
+///
+/// `entityType`/`entityId` point at an AccessRecord (kind: dormant,
+/// leaver_with_access, expiring_soon) or a ReviewCycle (kind: review_due_soon,
+/// review_overdue) — generic rather than a foreign key, the same choice
+/// AuditEvent makes, since the two entity types need one shared table.
+model NotificationLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  kind       String
+  notifiedAt DateTime @default(now())
+
+  @@unique([entityType, entityId, kind])
+  @@index([entityType, kind])
+}

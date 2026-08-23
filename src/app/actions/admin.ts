@@ -9,6 +9,8 @@ import { hashPassword } from "@/lib/auth/session";
 import { actorFrom, newCorrelationId, recordCreate, recordDiff, recordEvent } from "@/lib/audit";
 import { saveSettings } from "@/lib/settings";
 import { refreshAllFlags } from "@/lib/flags";
+import { runDailyDigest } from "@/lib/notifications/digest";
+import { emailConfigured } from "@/lib/notifications/email";
 
 /** Admin-only user and settings management. Changes are audited like any other. */
 
@@ -164,6 +166,10 @@ export async function saveAppSettings(formData: FormData): Promise<void> {
       Math.max(0.5, Number.parseFloat(String(formData.get("fuzzyMatchThreshold") ?? "0.86")) || 0.86),
     ),
     vendorOwnerAggregateAccess: String(formData.get("vendorOwnerAggregateAccess")) === "1",
+    reviewDueSoonDays: Math.max(
+      1,
+      Number.parseInt(String(formData.get("reviewDueSoonDays") ?? "7"), 10) || 7,
+    ),
   });
 
   // Thresholds changed, so every derived flag needs recomputing.
@@ -173,4 +179,24 @@ export async function saveAppSettings(formData: FormData): Promise<void> {
   revalidatePath("/");
   revalidatePath("/register");
   redirect("/admin?saved=1");
+}
+
+/**
+ * Runs the same digest the daily GitHub Actions trigger runs, so an admin can
+ * check it actually works — and what it would say — without waiting for the
+ * schedule or wiring up a cron caller first.
+ */
+export async function sendDigestNow(): Promise<void> {
+  await requireAdmin();
+
+  if (!emailConfigured()) {
+    redirect("/admin?digestError=" + encodeURIComponent("RESEND_API_KEY and NOTIFICATIONS_FROM_EMAIL are not set"));
+  }
+
+  const summary = await runDailyDigest();
+  revalidatePath("/admin");
+  redirect(
+    `/admin?digestSent=1&emails=${summary.emailsSent}&errors=${summary.emailErrors}` +
+      `&records=${summary.recordAlertsSent}&cycles=${summary.cycleAlertsSent}`,
+  );
 }

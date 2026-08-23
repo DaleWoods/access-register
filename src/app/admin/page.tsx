@@ -3,19 +3,25 @@ import { requireUser } from "@/lib/auth/guards";
 import { getSettings } from "@/lib/settings";
 import { ROLE_LABELS, isAdmin } from "@/lib/auth/policy";
 import { AccessDenied, Alert, Card, PageHeader, formatDateTime } from "@/components/ui";
+import { SavedNotice } from "@/components/saved-notice";
 import {
   createAppUser,
   resetUserPassword,
   saveAppSettings,
+  sendDigestNow,
   setUserRole,
   toggleUserActive,
   unlockAccount,
 } from "@/app/actions/admin";
 import { accountLockState } from "@/lib/auth/rate-limit";
+import { emailConfigured } from "@/lib/notifications/email";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+export default async function AdminPage({ searchParams }: Props) {
+  const params = await searchParams;
   const user = await requireUser();
   // A page-level refusal reads better than an exception. The server actions on
   // this page enforce the same rule again with requireAdmin.
@@ -36,6 +42,8 @@ export default async function AdminPage() {
         title="Admin"
         subtitle="App users, roles and the rule-engine settings."
       />
+
+      <SavedNotice searchParams={params}>Settings saved.</SavedNotice>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4">
@@ -197,6 +205,22 @@ export default async function AdminPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="label">Review "due soon" window (days)</label>
+                <input
+                  type="number"
+                  name="reviewDueSoonDays"
+                  min={1}
+                  max={90}
+                  defaultValue={settings.reviewDueSoonDays}
+                  className="input"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  The daily email digest warns a vendor owner once a review cycle's due date falls
+                  inside this window, and again if it goes overdue.
+                </p>
+              </div>
+
               <div className="md:col-span-2">
                 <button type="submit" className="btn-primary">
                   Save settings
@@ -210,6 +234,42 @@ export default async function AdminPage() {
         </div>
 
         <div className="space-y-4">
+          <Card title="Email notifications">
+            <div className="card-body space-y-3">
+              {emailConfigured() ? (
+                <p className="text-xs text-emerald-700">Configured — sending via Resend.</p>
+              ) : (
+                <p className="text-xs text-amber-700">
+                  Not configured. Set <code>RESEND_API_KEY</code> and{" "}
+                  <code>NOTIFICATIONS_FROM_EMAIL</code> to enable the daily digest.
+                </p>
+              )}
+
+              {params.digestSent === "1" ? (
+                <Alert tone="success">
+                  Sent {params.emails ?? 0} email(s) ({params.errors ?? 0} failed) — {params.records ?? 0}{" "}
+                  new account alert(s), {params.cycles ?? 0} review reminder(s).
+                </Alert>
+              ) : null}
+              {typeof params.digestError === "string" ? (
+                <Alert tone="error">{params.digestError}</Alert>
+              ) : null}
+
+              <p className="text-xs text-slate-500">
+                Vendor owners get a digest of newly dormant accounts, leavers who still have access,
+                accounts expiring soon, and reviews due soon or overdue. Each condition is emailed
+                once, not every day it stays true. A GitHub Actions schedule calls this once a day
+                in production — this button runs the same check on demand.
+              </p>
+
+              <form action={sendDigestNow}>
+                <button type="submit" className="btn-secondary btn-sm" disabled={!emailConfigured()}>
+                  Send digest now
+                </button>
+              </form>
+            </div>
+          </Card>
+
           <Card title="Add an app user">
             <form action={createAppUser} className="card-body space-y-3">
               <div>
