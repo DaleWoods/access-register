@@ -110,6 +110,11 @@ export function buildRegisterQuery(
   const personId = one(params, "personId");
   if (personId) and.push({ personId });
 
+  // Used by "export selected": the id list from a bulk selection on the
+  // register list, not exposed as a filter control of its own.
+  const ids = many(params, "id");
+  if (ids.length) and.push({ id: { in: ids } });
+
   const statuses = many(params, "accountStatus");
   if (statuses.length) {
     and.push({ accountStatus: { in: statuses as Prisma.EnumAccountStatusFilter["in"] } });

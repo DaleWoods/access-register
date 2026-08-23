@@ -2,18 +2,12 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser, toActor } from "@/lib/auth/guards";
 import { canWrite, vendorScope } from "@/lib/auth/policy";
-import { buildRegisterQuery, SORTABLE_COLUMNS, toQueryString, withParam } from "@/lib/register-query";
-import {
-  Card,
-  EmptyState,
-  FlagList,
-  PageHeader,
-  StatefulValue,
-  StatusBadge,
-  formatDate,
-} from "@/components/ui";
+import { buildRegisterQuery, toQueryString, withParam } from "@/lib/register-query";
+import { Card, PageHeader } from "@/components/ui";
+import { SavedNotice } from "@/components/saved-notice";
 import { RegisterFilters } from "./filters";
 import { SaveViewButton } from "./save-view";
+import { RegisterTable } from "./table";
 
 export const dynamic = "force-dynamic";
 
@@ -98,104 +92,22 @@ export default async function RegisterPage({ searchParams }: Props) {
 
       <RegisterFilters vendors={vendors} params={params} />
 
+      <SavedNotice searchParams={params} />
+
       <Card className="mt-4 overflow-hidden">
         <div className="card-header">
           <h2 className="text-sm font-semibold text-slate-700">Accounts</h2>
           <SaveViewButton query={qs} />
         </div>
 
-        {records.length === 0 ? (
-          <EmptyState>No accounts match these filters.</EmptyState>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="table">
-              <thead>
-                <tr>
-                  {SORTABLE_COLUMNS.filter((c) =>
-                    [
-                      "vendor",
-                      "person",
-                      "rawUsername",
-                      "rawEmail",
-                      "role",
-                      "accountStatus",
-                      "lastLogin",
-                      "accountExpiry",
-                      "passwordExpiry",
-                      "lastConfirmed",
-                    ].includes(c.key),
-                  ).map((column) => {
-                    const active = sort === column.key;
-                    const nextDir = active && dir === "asc" ? "desc" : "asc";
-                    return (
-                      <th key={column.key}>
-                        <Link
-                          href={`/register${withParam({ ...params, dir: nextDir }, "sort", column.key)}`}
-                          className="inline-flex items-center gap-1 hover:text-slate-900"
-                        >
-                          {column.label}
-                          {active ? <span>{dir === "asc" ? "▲" : "▼"}</span> : null}
-                        </Link>
-                      </th>
-                    );
-                  })}
-                  <th>Flags</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((record) => (
-                  <tr key={record.id}>
-                    <td>
-                      <Link href={`/register/${record.id}`} className="link font-medium">
-                        {record.vendor.name}
-                      </Link>
-                      {record.instance ? (
-                        <div className="text-xs text-slate-500">{record.instance.name}</div>
-                      ) : null}
-                    </td>
-                    <td>
-                      {record.person ? (
-                        <Link href={`/people/${record.person.id}`} className="link">
-                          {record.person.fullName}
-                        </Link>
-                      ) : (
-                        <span className="badge bg-violet-100 text-violet-800">Unmatched</span>
-                      )}
-                    </td>
-                    <td className="font-mono text-xs">{record.rawUsername || "—"}</td>
-                    <td className="font-mono text-xs">{record.rawEmail || "—"}</td>
-                    <td>
-                      {record.role || "—"}
-                      {record.permissionLevel ? (
-                        <div className="text-xs text-slate-500">{record.permissionLevel}</div>
-                      ) : null}
-                    </td>
-                    <td>
-                      <StatusBadge status={record.accountStatus} />
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <StatefulValue value={record.lastLogin} state={record.lastLoginState} />
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <StatefulValue value={record.accountExpiry} state={record.accountExpiryState} />
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <StatefulValue value={record.passwordExpiry} state={record.passwordExpiryState} />
-                    </td>
-                    <td className="whitespace-nowrap text-xs text-slate-600">
-                      {formatDate(record.lastConfirmed) || (
-                        <span className="blank-cell">Never</span>
-                      )}
-                    </td>
-                    <td>
-                      <FlagList flags={record.flags} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <RegisterTable
+          records={records}
+          params={params}
+          sort={sort}
+          dir={dir}
+          qs={qs}
+          canWrite={canWrite(user.role)}
+        />
 
         {pages > 1 ? (
           <div className="flex items-center justify-between border-t border-slate-200 px-5 py-3 text-sm">

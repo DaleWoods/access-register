@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AccountStatus, FieldState, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { requireRecordEdit, requireVendorEdit, requireWriter } from "@/lib/auth/guards";
+import { requireRecordEdit, requireVendorEdit, requireWriter, toActor, type CurrentUser } from "@/lib/auth/guards";
+import { canEditVendor } from "@/lib/auth/policy";
 import {
   actorFrom,
   newCorrelationId,
@@ -257,6 +258,108 @@ export async function markRecordRemoved(formData: FormData): Promise<void> {
   await refreshFlagsForRecords([id]);
   revalidatePath(`/register/${id}`);
   redirect(`/register/${id}?saved=1`);
+}
+
+/**
+ * Shared by the bulk actions below: resolve which of the selected ids the
+ * caller may actually act on, scoped the same way the register list itself
+ * is scoped. Rows outside the caller's vendors are silently dropped rather
+ * than failing the whole batch — a vendor owner's selection can only ever
+ * have come from rows they could already see.
+ */
+async function allowedRecordIds(user: CurrentUser, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const records = await prisma.accessRecord.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, vendorId: true },
+  });
+  const actor = toActor(user);
+  return records.filter((r) => canEditVendor(actor, r.vendorId)).map((r) => r.id);
+}
+
+/** Rebuild the register querystring the selection was made from, plus a result flag. */
+function returnTo(qs: string, extra: Record<string, string>): string {
+  const search = new URLSearchParams(qs);
+  search.delete("bulk");
+  search.delete("count");
+  for (const [key, value] of Object.entries(extra)) search.set(key, value);
+  return `/register?${search.toString()}`;
+}
+
+/**
+ * Confirm several rows at once — the register-list equivalent of confirmRecord.
+ * Every row still gets its own audit event; a bulk action is not a reason to
+ * collapse the trail into one opaque entry.
+ */
+export async function bulkConfirmRecords(formData: FormData): Promise<void> {
+  const user = await requireWriter();
+  const qs = String(formData.get("qs") ?? "");
+  const ids = formData.getAll("id").map(String).filter(Boolean);
+  const allowed = await allowedRecordIds(user, ids);
+
+  if (allowed.length === 0) redirect(returnTo(qs, { bulk: "none" }));
+
+  const context = contextFor(user);
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    for (const id of allowed) {
+      const before = await tx.accessRecord.findUniqueOrThrow({ where: { id } });
+      const updated = await tx.accessRecord.update({ where: { id }, data: { lastConfirmed: now } });
+      await recordDiff({
+        db: tx,
+        entityType: "AccessRecord",
+        entityId: id,
+        context,
+        before: before as unknown as Record<string, unknown>,
+        after: updated as unknown as Record<string, unknown>,
+        fields: ["lastConfirmed"],
+      });
+    }
+  });
+
+  await refreshFlagsForRecords(allowed);
+  revalidatePath("/register");
+  redirect(returnTo(qs, { bulk: "confirmed", count: String(allowed.length) }));
+}
+
+/**
+ * Remove several rows at once. Soft delete only, same as markRecordRemoved —
+ * accountStatus becomes REMOVED, nothing is destroyed.
+ */
+export async function bulkRemoveRecords(formData: FormData): Promise<void> {
+  const user = await requireWriter();
+  const qs = String(formData.get("qs") ?? "");
+  const ids = formData.getAll("id").map(String).filter(Boolean);
+  const allowed = await allowedRecordIds(user, ids);
+
+  if (allowed.length === 0) redirect(returnTo(qs, { bulk: "none" }));
+
+  const context = contextFor(user);
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    for (const id of allowed) {
+      const before = await tx.accessRecord.findUniqueOrThrow({ where: { id } });
+      const updated = await tx.accessRecord.update({
+        where: { id },
+        data: { accountStatus: "REMOVED", lastConfirmed: now },
+      });
+      await recordDiff({
+        db: tx,
+        entityType: "AccessRecord",
+        entityId: id,
+        context,
+        before: before as unknown as Record<string, unknown>,
+        after: updated as unknown as Record<string, unknown>,
+        fields: ["accountStatus"],
+      });
+    }
+  });
+
+  await refreshFlagsForRecords(allowed);
+  revalidatePath("/register");
+  redirect(returnTo(qs, { bulk: "removed", count: String(allowed.length) }));
 }
 
 export async function refreshFlags(): Promise<void> {

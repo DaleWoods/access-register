@@ -115,6 +115,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     paragraphs: [
       "One row per account on one system. Filter and sort on any field; every filter lands in the URL, so a view is shareable, bookmarkable and saveable, and an export always contains exactly what is on screen.",
       "Open any row to see its full detail and its complete history — who changed what, when, and through which process.",
+      "Tick the checkbox on one or more rows to act on them together: confirm several accounts at once, mark several as removed, or export just the ones ticked instead of everything the current filter matches. This works on the page you are looking at, so filter down to the accounts you mean before selecting.",
     ],
     points: [
       {
@@ -140,6 +141,11 @@ export const GUIDE_SECTIONS: GuideSection[] = [
         tone: "tip",
         title: "Saved views",
         body: "Save a filter combination you use often. Personal by default; tick Share to make it available to everyone.",
+      },
+      {
+        tone: "info",
+        title: "Bulk actions are still one action per row",
+        body: "Selecting 20 rows and confirming them writes 20 separate audit events, exactly as if each had been confirmed one at a time. Removal is still a status change, not a delete — nothing selected in bulk is ever destroyed.",
       },
     ],
   },
