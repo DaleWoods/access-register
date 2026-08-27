@@ -87,3 +87,6 @@ them only deliberately:
 - **The email digest notifies once per condition, not once a day it holds.**
   Every alert kind checks `NotificationLog` before sending and deletes its row
   once the condition clears, so it can fire again if the same thing recurs.
+- **Snapshots are measurements, not estimates.** A day the daily job missed has
+  no `RegisterSnapshot` row. Never fill a gap by interpolating or by
+  reconstructing it from the audit trail — plot the days that exist.

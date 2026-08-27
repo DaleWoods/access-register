@@ -73,6 +73,9 @@ describe("the user guide keeps up with the app", () => {
     // Login lockout, and that an admin can clear it without a password reset.
     expect(text).toContain("locks the account");
     expect(text).toContain("unlock");
+    // Trend history starts empty and cannot be reconstructed. A reader who does
+    // not know that will misread an empty chart as "no problems".
+    expect(text).toContain("cannot be backfilled");
   });
 
   it("is structurally sound", () => {

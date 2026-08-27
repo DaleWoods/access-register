@@ -11,7 +11,7 @@
  * and GUIDE_UPDATED are updated with it.
  */
 
-export const GUIDE_UPDATED = "2026-08-23";
+export const GUIDE_UPDATED = "2026-08-27";
 
 export type GuideCallout = {
   tone: "info" | "warn" | "tip";
@@ -93,16 +93,38 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "dashboard",
     title: "Dashboard",
-    summary: "The audit-relevant counts, each a link into the underlying accounts.",
+    summary: "Split in two: what to go and do, and evidence the process is running.",
     covers: ["/"],
     paragraphs: [
       "The dashboard is the standing view of where the estate is uncomfortable. Every tile is a saved filter over the register rather than a separate calculation, so clicking one shows exactly the accounts behind the number — and you can export precisely that.",
-      "Leavers with access is the headline figure: how many people have left and still hold live access. It is the number an auditor will ask about first. Where those people hold more than one account between them, the tile also names the account total, because the accounts are the work.",
+      "Needs attention is the worklist: leavers with access, overdue reviews, expiring accounts, dormant accounts and anything not yet matched to a person, most urgent first. Leavers with access is the headline figure — how many people have left and still hold live access — because it is the number an auditor will ask about first. Where those people hold more than one account between them, the tile also names the account total, because the accounts are the work.",
+      "Assurance is the half you would show someone else: how much of the estate has ever been reviewed, how current each vendor's data is, and which way the numbers are moving. Data freshness judges each vendor against its own review frequency, so a vendor reviewed quarterly is called overdue sooner than one reviewed annually.",
+      "Open issues over time charts dormant, unmatched and overdue-review accounts across the last ninety days.",
+    ],
+    points: [
+      {
+        term: "Change since last week",
+        body: "Tiles show movement against the snapshot from a week ago, once that much history exists. An arrow and a sign carry the direction, so the colour is never the only clue.",
+      },
+      {
+        term: "Reviewed at least once",
+        body: "The share of live accounts a human has confirmed or reviewed at any point. The single best answer to \"is this register actually maintained?\".",
+      },
     ],
     callouts: [
       {
         tone: "tip",
         body: "Recalculate flags re-runs the rule engine over every account and confirms when it is done. Editing a person or an account already recalculates what it needs to, so this is only for a sweep after changing the dormancy threshold or a vendor's exposure settings.",
+      },
+      {
+        tone: "warn",
+        title: "The trend chart starts empty, and cannot be backfilled",
+        body: "Flags are recalculated from scratch every time and never stored per day, so there is no record of what they used to be. A snapshot is taken once a day by the daily job, and the chart can only ever show days that job actually ran — history before the first run does not exist and cannot be reconstructed. The chart says so plainly until there are at least two days to plot.",
+      },
+      {
+        tone: "info",
+        title: "Vendor owners and the trend",
+        body: "Snapshots are counted across the whole estate, so the chart is only shown to people who can see the whole estate. A vendor owner restricted to their own vendors sees every other part of the dashboard, just not a trend covering vendors they have no access to.",
       },
     ],
   },
@@ -244,7 +266,8 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     paragraphs: [
       "A vendor is a third-party system. Give each one an accountable owner: they get its accounts to review and can run its imports.",
       "Use instances where one vendor has several portals or tenants — a separate payment portal per retail brand, for example. Imports and the disappeared check are scoped per instance.",
-      "The vendor list doubles as a record of which vendors are up to date. Each row shows when its data was last uploaded, ageing to amber past ninety days, and carries an Upload data button that takes you straight into the import with that vendor selected. Vendors captured by hand show “Entered by hand” instead, because there is no export to upload for them.",
+      "The vendor list doubles as a record of which vendors are up to date. Each row shows when its data was last uploaded, and carries an Upload data button that takes you straight into the import with that vendor selected. Vendors captured by hand show “Entered by hand” instead, because there is no export to upload for them.",
+      "Staleness is judged against that vendor's own review frequency rather than one fixed age: past the frequency it reads “refresh due” in amber, past twice it reads “overdue” in red. So a vendor reviewed quarterly is chased sooner than one reviewed annually, and the same figure appears on the dashboard's vendor coverage table.",
     ],
     points: [
       {
@@ -342,7 +365,7 @@ export const GUIDE_SECTIONS: GuideSection[] = [
     paragraphs: [
       "Add app users, set their role, disable them, or reset a password. The system will not let you remove the last active admin.",
       "The Sign-in column shows failed attempts and, once an account has locked itself out after five wrong passwords, a Locked badge with the time remaining. Unlock clears the lockout without changing the password — use it for a genuine user who mistyped it too many times. Resetting the password clears any lockout at the same time.",
-      "Email notifications tell each vendor owner about newly dormant accounts, leavers who still have access, accounts expiring soon, and reviews due soon or overdue — one email per condition, the day it starts being true, never a repeat while it stays true. A daily scheduled job triggers it in production; the Send digest now button on this page runs the identical check on demand, useful for confirming it is wired up correctly.",
+      "The daily job does two things: it records a snapshot of the register's headline counts, which is what the dashboard's trend chart is built from, and it emails each vendor owner about newly dormant accounts, leavers who still have access, accounts expiring soon, and reviews due soon or overdue — one email per condition, the day it starts being true, never a repeat while it stays true. A scheduled job triggers it in production; Run daily job now on this page does the identical thing on demand. Snapshots are recorded whether or not email is configured, because trend history cannot be caught up later.",
     ],
     points: [
       {

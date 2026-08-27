@@ -20,7 +20,8 @@ export async function resetDatabase(): Promise<void> {
       "ReviewItem", "ReviewCycle",
       "DisappearedCandidate", "StagedRow", "ImportBatch", "ColumnMapping",
       "AccessRecord", "Person", "VendorInstance", "VendorGrant", "Vendor",
-      "SavedView", "AuditEvent", "AppUser", "AppSetting", "LoginAttempt", "NotificationLog"
+      "SavedView", "AuditEvent", "AppUser", "AppSetting", "LoginAttempt", "NotificationLog",
+      "RegisterSnapshot"
     RESTART IDENTITY CASCADE
   `);
 

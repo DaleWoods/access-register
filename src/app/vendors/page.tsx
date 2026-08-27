@@ -2,8 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { requireUser, toActor } from "@/lib/auth/guards";
 import { isAdmin, vendorScope } from "@/lib/auth/policy";
-import { Card, EmptyState, PageHeader, formatDate } from "@/components/ui";
+import { Card, EmptyState, PageHeader } from "@/components/ui";
 import { canWrite } from "@/lib/auth/policy";
+import { LastUpload } from "@/components/freshness";
 import { VendorForm } from "./vendor-form";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +116,7 @@ export default async function VendorsPage() {
                           <LastUpload
                             batch={vendor.importBatches[0]}
                             captureMethod={vendor.captureMethod}
+                            reviewFrequencyMonths={vendor.reviewFrequencyMonths}
                           />
                         </td>
                         {editable ? (
@@ -143,34 +145,5 @@ export default async function VendorsPage() {
         ) : null}
       </div>
     </>
-  );
-}
-
-/**
- * When this vendor's data was last uploaded. Vendors captured by hand have no
- * export to upload, so they are called out rather than shown as overdue.
- */
-function LastUpload({
-  batch,
-  captureMethod,
-}: {
-  batch?: { importedAt: Date | null; sourceFilename: string; rowCount: number };
-  captureMethod: string;
-}) {
-  if (captureMethod === "MANUAL_READ") {
-    return <span className="text-slate-400">Entered by hand</span>;
-  }
-  if (!batch?.importedAt) {
-    return <span className="blank-cell">Never uploaded</span>;
-  }
-
-  const days = Math.floor((Date.now() - batch.importedAt.getTime()) / 86_400_000);
-  return (
-    <span title={`${batch.sourceFilename} — ${batch.rowCount} rows`}>
-      {formatDate(batch.importedAt)}
-      <span className={days > 90 ? "ml-1 text-amber-600" : "ml-1 text-slate-400"}>
-        ({days === 0 ? "today" : `${days}d ago`})
-      </span>
-    </span>
   );
 }

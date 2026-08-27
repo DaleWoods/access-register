@@ -158,11 +158,19 @@ export function Stat({
   value,
   href,
   tone = "default",
+  delta,
 }: {
   label: string;
   value: number | string;
   href?: string;
   tone?: "default" | "warn" | "danger" | "good";
+  /**
+   * Change against an earlier snapshot. `upIsGood` decides the colour, because
+   * here a rising number is usually bad — more dormant accounts, more leavers
+   * with access. The arrow and sign carry the direction too, so colour is never
+   * the only signal.
+   */
+  delta?: { value: number; since: string; upIsGood?: boolean };
 }) {
   const tones = {
     default: "text-slate-900",
@@ -172,8 +180,20 @@ export function Stat({
   };
   const body = (
     <>
-      <div className={`text-3xl font-semibold tabular-nums ${tones[tone]}`}>{value}</div>
+      {/* Proportional figures: tabular-nums pads every digit to the width of a
+          zero, which reads loose at this size. Columns still use tabular. */}
+      <div className={`text-3xl font-semibold ${tones[tone]}`}>{value}</div>
       <div className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
+      {delta && delta.value !== 0 ? (
+        <div
+          className={`mt-1 text-[11px] ${
+            delta.value > 0 === (delta.upIsGood ?? false) ? "text-emerald-700" : "text-amber-700"
+          }`}
+        >
+          {delta.value > 0 ? "▲" : "▼"} {delta.value > 0 ? "+" : "−"}
+          {Math.abs(delta.value).toLocaleString()} {delta.since}
+        </div>
+      ) : null}
     </>
   );
   if (href) {

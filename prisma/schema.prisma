@@ -581,6 +581,46 @@ model LoginAttempt {
   @@index([ip, attemptedAt])
 }
 
+/// One row per day of the register's headline counts, written by the same daily
+/// job that sends the email digest.
+///
+/// Flags are derived state, recomputed from scratch every time and never
+/// versioned, so "how many accounts were dormant last month" is a question the
+/// rest of the schema genuinely cannot answer. This table is the only history
+/// of it. Nothing can be backfilled — a snapshot exists only for days the job
+/// actually ran — so charts read from whatever days are present rather than
+/// assuming an unbroken run.
+///
+/// Estate-wide, not per vendor: at this size a vendor breakdown would multiply
+/// the rows for a trend nobody has asked to slice. The dashboard only shows
+/// these to viewers whose aggregate scope is unrestricted (see auth/policy.ts).
+model RegisterSnapshot {
+  id String @id @default(uuid())
+
+  /// Midnight UTC of the day this represents. Unique, so a job that runs twice
+  /// in a day updates rather than duplicating.
+  day DateTime @unique @db.Date
+
+  activeAccounts  Int
+  removedAccounts Int
+  /// Live accounts carrying at least one flag — the headline "open issues".
+  flaggedAccounts Int
+
+  dormant       Int
+  unverifiable  Int
+  unmatched     Int
+  neverReviewed Int
+  reviewOverdue Int
+  expiringSoon  Int
+  expired       Int
+
+  /// Accounts held by leavers, and the number of people behind them.
+  leaverAccounts Int
+  leaverPeople   Int
+
+  capturedAt DateTime @default(now())
+}
+
 /// Tracks which (entity, condition) pairs the daily email digest has already
 /// alerted someone about, so a condition that stays true is emailed once —
 /// not every day it remains unresolved. Deleted once the condition clears, so

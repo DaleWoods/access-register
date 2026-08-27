@@ -47,6 +47,9 @@ They are what the acceptance criteria in the requirements rest on:
   A new alert kind must write a `NotificationLog` row and check for an existing
   one first, and must delete the row once the condition clears — otherwise
   either nothing gets sent, or the same person gets emailed forever.
+- `RegisterSnapshot` rows are measurements, never estimates. A day the daily job
+  did not run has no row and must stay that way: never interpolate a gap, and
+  never synthesise history from audit events. Charts read the days that exist.
 
 ## Verifying changes
 

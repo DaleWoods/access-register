@@ -235,9 +235,10 @@ a day via a GitHub Actions schedule. It needs two **repository secrets**
 
 ### 3. Checking it actually works
 
-Admin → **Email notifications** has a **Send digest now** button that runs the
-identical check on demand — no need to wait for the schedule, or set up the
-GitHub Actions secrets first, just to see what it would say.
+Admin → **Daily job** has a **Run daily job now** button that does the identical
+thing on demand — no need to wait for the schedule, or set up the GitHub Actions
+secrets first. It records the snapshot whether or not email is configured, since
+trend history cannot be caught up later.
 
 ---
 
@@ -318,6 +319,21 @@ plumbing a nonce through client components for. The remaining security headers
 `Strict-Transport-Security`) don't vary per request, so they live as static config in
 `next.config.ts` instead.
 
+### Trends are measured daily, because derived state has no past
+
+Flags are recomputed from scratch every time and never versioned, so "how many accounts were
+dormant last month" is a question the register genuinely cannot answer from its own tables. The
+daily job writes a `RegisterSnapshot` row of the headline counts, and the dashboard charts those.
+
+The consequence is deliberate and stated on the chart itself: **history starts at the first run
+and cannot be backfilled.** A day the job did not run has no row, and inventing one — by
+interpolating, or by reconstructing it from the audit trail — would be fabricating a measurement
+nobody took. The chart plots the days that exist and says so when there are fewer than two.
+
+Snapshots are estate-wide, so the chart is only rendered for viewers whose aggregate scope is
+unrestricted; a vendor owner limited to their own vendors gets the rest of the dashboard without
+a trend covering vendors they cannot see.
+
 ### The email digest notifies once per condition, never once a day
 
 Recalculating flags is idempotent by design — safe to run constantly — but a naive "email
@@ -346,6 +362,8 @@ src/lib/
   auth/guards.ts              server-side enforcement
   notifications/digest.ts     the daily email digest, and its notify-once logic
   notifications/email.ts      Resend API wrapper
+  snapshots.ts                daily history of the headline counts, for trends
+  freshness.ts                how stale a vendor's upload is, vs its review cycle
   import/
     parse.ts                  CSV/paste parsing and the messy-date reader
     normalise.ts              mapping application and validation
@@ -368,7 +386,8 @@ diff preview · person layer with the cross-vendor view, manual matching, merge 
 dormant/unverifiable/expiry flagging · leaver workflow with evidence upload and report ·
 append-only audit log · auditor read-only role · CSV and Excel export of any view · dashboard ·
 saved views · review cycles with challenge prompts and progress tracking · email digest for new
-dormant/leaver/expiring flags and review cycles due or overdue.
+dormant/leaver/expiring flags and review cycles due or overdue · daily snapshots with a
+ninety-day trend chart and per-vendor data-freshness tracking.
 
 **Not built — deliberately, these are later phases in the requirements:**
 

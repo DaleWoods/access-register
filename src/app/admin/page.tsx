@@ -7,8 +7,8 @@ import { SavedNotice } from "@/components/saved-notice";
 import {
   createAppUser,
   resetUserPassword,
+  runDailyJobNow,
   saveAppSettings,
-  sendDigestNow,
   setUserRole,
   toggleUserActive,
   unlockAccount,
@@ -234,37 +234,45 @@ export default async function AdminPage({ searchParams }: Props) {
         </div>
 
         <div className="space-y-4">
-          <Card title="Email notifications">
+          <Card title="Daily job">
             <div className="card-body space-y-3">
               {emailConfigured() ? (
-                <p className="text-xs text-emerald-700">Configured — sending via Resend.</p>
+                <p className="text-xs text-emerald-700">Email configured — sending via Resend.</p>
               ) : (
                 <p className="text-xs text-amber-700">
-                  Not configured. Set <code>RESEND_API_KEY</code> and{" "}
-                  <code>NOTIFICATIONS_FROM_EMAIL</code> to enable the daily digest.
+                  Email not configured. Set <code>RESEND_API_KEY</code> and{" "}
+                  <code>NOTIFICATIONS_FROM_EMAIL</code> to enable the digest. Snapshots are
+                  recorded either way.
                 </p>
               )}
 
               {params.digestSent === "1" ? (
                 <Alert tone="success">
-                  Sent {params.emails ?? 0} email(s) ({params.errors ?? 0} failed) — {params.records ?? 0}{" "}
-                  new account alert(s), {params.cycles ?? 0} review reminder(s).
+                  Snapshot recorded. Sent {params.emails ?? 0} email(s) ({params.errors ?? 0}{" "}
+                  failed) — {params.records ?? 0} new account alert(s), {params.cycles ?? 0} review
+                  reminder(s).
                 </Alert>
               ) : null}
-              {typeof params.digestError === "string" ? (
-                <Alert tone="error">{params.digestError}</Alert>
+              {params.snapshotOnly === "1" ? (
+                <Alert tone="success">
+                  Snapshot recorded. No email sent — the digest is not configured.
+                </Alert>
               ) : null}
 
               <p className="text-xs text-slate-500">
-                Vendor owners get a digest of newly dormant accounts, leavers who still have access,
-                accounts expiring soon, and reviews due soon or overdue. Each condition is emailed
-                once, not every day it stays true. A GitHub Actions schedule calls this once a day
-                in production — this button runs the same check on demand.
+                Once a day, a GitHub Actions schedule records a snapshot of the register&apos;s
+                headline counts and emails each vendor owner about anything new — dormant accounts,
+                leavers who still have access, accounts expiring soon, reviews due or overdue. Each
+                condition is emailed once, not every day it stays true.
+              </p>
+              <p className="text-xs text-slate-500">
+                This button runs the same job now. Snapshots cannot be backfilled, so the dashboard
+                trend only covers days the job has actually run.
               </p>
 
-              <form action={sendDigestNow}>
-                <button type="submit" className="btn-secondary btn-sm" disabled={!emailConfigured()}>
-                  Send digest now
+              <form action={runDailyJobNow}>
+                <button type="submit" className="btn-secondary btn-sm">
+                  Run daily job now
                 </button>
               </form>
             </div>

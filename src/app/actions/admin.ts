@@ -11,6 +11,7 @@ import { saveSettings } from "@/lib/settings";
 import { refreshAllFlags } from "@/lib/flags";
 import { runDailyDigest } from "@/lib/notifications/digest";
 import { emailConfigured } from "@/lib/notifications/email";
+import { captureSnapshot } from "@/lib/snapshots";
 
 /** Admin-only user and settings management. Changes are audited like any other. */
 
@@ -182,19 +183,28 @@ export async function saveAppSettings(formData: FormData): Promise<void> {
 }
 
 /**
- * Runs the same digest the daily GitHub Actions trigger runs, so an admin can
- * check it actually works — and what it would say — without waiting for the
- * schedule or wiring up a cron caller first.
+ * Runs exactly what the daily GitHub Actions trigger runs — record a snapshot,
+ * then send the digest — so an admin can check it works without waiting for
+ * the schedule or wiring up the cron caller first.
+ *
+ * Deliberately not gated on email being configured: the snapshot half is what
+ * builds trend history, it can never be backfilled, and it is useful on its
+ * own. The digest half simply reports that it could not send.
  */
-export async function sendDigestNow(): Promise<void> {
+export async function runDailyJobNow(): Promise<void> {
   await requireAdmin();
 
+  await captureSnapshot();
+
   if (!emailConfigured()) {
-    redirect("/admin?digestError=" + encodeURIComponent("RESEND_API_KEY and NOTIFICATIONS_FROM_EMAIL are not set"));
+    revalidatePath("/admin");
+    revalidatePath("/");
+    redirect("/admin?snapshotOnly=1");
   }
 
   const summary = await runDailyDigest();
   revalidatePath("/admin");
+  revalidatePath("/");
   redirect(
     `/admin?digestSent=1&emails=${summary.emailsSent}&errors=${summary.emailErrors}` +
       `&records=${summary.recordAlertsSent}&cycles=${summary.cycleAlertsSent}`,
