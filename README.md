@@ -7,6 +7,20 @@ used it, and whether they should still have it.**
 The register is **manually owned**. Data arrives by per-vendor CSV export and manual entry, not
 live sync. The app's job is to make that manual process fast, consistent and evidenced.
 
+### Where things are written down
+
+| Document | What it is for |
+|---|---|
+| **This README** | The spec of record: what was asked for, what got built, the decisions behind it, and how to run and deploy it. |
+| [`docs/requirements.md`](./docs/requirements.md) | The **original brief, verbatim and frozen**. Never edited to match the build — it is what the build is checked against. |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | How to work on it, and the invariants not to break. |
+| [`CLAUDE.md`](./CLAUDE.md) | The same invariants, aimed at an AI agent working in this repo. |
+| **User guide** (in the app, `/guide`) | End-user documentation, served from `src/content/user-guide.ts`. Kept in step with the app by tests. |
+
+**Jump to:** [Running it](#running-it) · [Requirements traceability](#requirements-traceability) ·
+[What is pending](#what-is-pending) · [Decisions](#the-decisions-that-matter) ·
+[Architecture](#how-it-is-put-together) · [Deploying](#deploying-to-render)
+
 ---
 
 ## Running it
@@ -46,20 +60,102 @@ never touch your working data.
 
 ---
 
-## Acceptance criteria
+## Requirements traceability
 
-Each criterion in section 7 of the requirements has a test named after it in
-[`tests/acceptance.test.ts`](./tests/acceptance.test.ts).
+Every clause of [the brief](./docs/requirements.md), what happened to it, and where to look.
+✅ built · 🟡 partial · ⬜ not built — see [What is pending](#what-is-pending) for each gap.
 
-| # | Criterion | Where it is enforced |
+### Functional requirements
+
+| § | Requirement | Status | Where |
+|---|---|---|---|
+| 1 | Admin / Vendor owner / Auditor roles, RBAC throughout | ✅ | `lib/auth/policy.ts` (pure, unit-tested), enforced by `lib/auth/guards.ts` in every action and route |
+| 1 | Vendor owner restricted to their own vendors, except read-only aggregates *(configurable)* | ✅ | `vendorScope()` vs `aggregateScope()`; the toggle is the `vendorOwnerAggregateAccess` setting on Admin |
+| 1 | SSO via Microsoft Entra (OIDC) | ⬜ | Local login is the fallback the brief permits for MVP. Session layer is already provider-agnostic |
+| 2 | Data model — Vendor, VendorInstance, Person, AccessRecord, ImportBatch, ColumnMapping, ReviewCycle/Item, AuditEvent | ✅ | `prisma/schema.prisma` — every field in the brief is present, plus the additions noted below |
+| 3.1 | Vendor & instance CRUD, capture method, exposed-field flags, owner | ✅ | `/vendors`, `actions/vendors.ts` |
+| 3.2 | AccessRecord CRUD + manual single entry | ✅ | `/register`, `/register/new`, `actions/records.ts` |
+| 3.2 | Filter and sort on **every** field; saved views | ✅ | `lib/register-query.ts`, shared verbatim with the exports so a download always matches the screen |
+| 3.2 | "N/A – not exposed" as a state distinct from blank, visible and filterable | ✅ | `FieldState` column beside each optional date; see [the decision](#blank-and-na--not-exposed-are-different-things) |
+| 3.3 | One Person per human; cross-vendor view of their whole footprint | ✅ | `/people/[id]` — queries by `personId` with no vendor filter |
+| 3.3 | Manual merge and split of Persons | ✅ | `mergePeople()` / `splitAccountFromPerson()` in `actions/people.ts`; merges tombstone rather than delete |
+| 3.4 | Import: upload → saved mapping → staging → **diff preview** (new / changed / disappeared) → commit | ✅ | `lib/import/{parse,normalise,stage,commit}.ts`, `/import` |
+| 3.4 | Imports idempotent — re-importing the same file changes nothing | ✅ | Acceptance test AC1 |
+| 3.5 | Match by email first, fuzzy name as fallback; never silently guess | ✅ | `lib/matching.ts`. Fuzzy hits are suggestions with a score that a human accepts |
+| 3.6 | HR reconciliation: import an active-employee list | ⬜ | Brief marks it later-phase. See [What is pending](#what-is-pending) |
+| 3.6 | "Leavers with access" report | ✅ | Works off `employeeStatus`; the dashboard's headline figure and a register filter |
+| 3.7 | `dormant` after N months (configurable, default 12) | ✅ | `lib/flags.ts`; N is the `dormantMonths` setting |
+| 3.7 | Vendors not exposing last login → `unverifiable`, never `dormant` | ✅ | Acceptance test AC4 |
+| 3.7 | Upcoming account/password expiry within a configurable window | ✅ | `expiringSoon` / `expired` flags; window is `expiryWindowDays` |
+| 3.8 | Leaver workflow: every account as a checklist, evidence + timestamp, one report | ✅ | `lib/leaver.ts`, `/leavers`; acceptance test AC7 |
+| 3.9 | Review cycles: open, assign per vendor owner, keep/downgrade/remove + notes, progress, exportable close | ✅ | `actions/reviews.ts`, `/reviews` |
+| 3.9 | Challenge prompts — dormant, no justification, permission above role, never reviewed | ✅ | `lib/review-challenges.ts`, all four plus unverifiable and leaver |
+| 3.10 | Append-only audit of every change; history per record and per person | ✅ | `lib/audit.ts`; immutability is [a database trigger](#the-audit-log-cannot-be-edited-even-from-psql), not a convention |
+| 3.11 | Dashboard: per-vendor active/removed, dormant, unmatched, leavers, overdue review, upcoming expiries | ✅ | `/` — and now split into worklist vs assurance, with trends |
+| 3.11 | Export any view to CSV/Excel | ✅ | `lib/export.ts`; every role including auditors |
+| 3.12 | Notifications — review due, expiry approaching, new dormant accounts | ✅ | Later-phase in the brief, now built. See [Email notifications](#email-notifications). One deviation: the brief says dormant accounts are detected *on import*; detection is on the daily run instead, so an alert can lag an import by up to a day. Flags themselves update immediately |
+
+### Non-functional requirements (§4)
+
+| Requirement | Status | Notes |
 |---|---|---|
-| 1 | Importing a vendor CSV twice produces **zero** changes the second time | `lib/import/commit.ts` — unchanged rows touch only `lastSeenInSource`, which is bookkeeping and is deliberately not audited |
-| 2 | A disappeared account is surfaced and **never** auto-removed | `DisappearedCandidate.confirmRemove` defaults to `false` and is never pre-ticked |
-| 3 | Opening any Person shows **100%** of their accounts | `/people/[id]` queries by `personId` with no vendor filter, and includes removed accounts |
-| 4 | A vendor that doesn't expose `last_login` is `unverifiable`, never `dormant` | `lib/flags.ts` — `NOT_EXPOSED` short-circuits the dormancy branch entirely |
-| 5 | Every field change is retrievable with who/when/source | `lib/audit.ts` writes one `AuditEvent` per changed field |
-| 6 | An auditor can view and export everything and change nothing | `lib/auth/policy.ts` `canWrite()`, enforced server-side by `requireWriter()` |
-| 7 | A leaver produces one report of every account with action and evidence | `lib/leaver.ts` `buildLeaverReport()` |
+| RBAC enforced **server-side** | ✅ | Every action and route handler starts at a guard. The UI only hides what the server would refuse anyway |
+| SSO via Entra/OIDC, least privilege | 🟡 | Least privilege yes; Entra not built |
+| Encrypted at rest and in transit | 🟡 | A deployment concern, met by the database and TLS termination rather than by application code |
+| **Defined retention policy** | ⬜ | Not implemented and not currently defined. The audit trail and removed accounts grow without bound by design. See [What is pending](#what-is-pending) |
+| Hosted in line with WOSG data policy | 🟡 | The database is an external EU-region Postgres; confirming that satisfies policy is a decision for WOSG, not code |
+| Append-only audit log; no hard deletes | ✅ | Enforced by a Postgres trigger and by `accountStatus = REMOVED` respectively |
+| Imports transactional (all-or-nothing per batch) | ✅ | One transaction per commit |
+| Backups | ⬜ | A deployment setting on the database provider; not yet configured |
+| Import diff-preview and cross-vendor view are the two screens that must be excellent | ✅ | Both got the most design attention |
+
+### Acceptance criteria (§7)
+
+Each has a test named after it in [`tests/acceptance.test.ts`](./tests/acceptance.test.ts).
+
+| # | Criterion | Status | Where it is enforced |
+|---|---|---|---|
+| 1 | Importing a vendor CSV twice produces **zero** changes the second time | ✅ | `lib/import/commit.ts` — unchanged rows touch only `lastSeenInSource`, which is bookkeeping and is deliberately not audited |
+| 2 | A disappeared account is surfaced and **never** auto-removed | ✅ | `DisappearedCandidate.confirmRemove` defaults to `false` and is never pre-ticked |
+| 3 | Opening any Person shows **100%** of their accounts | ✅ | `/people/[id]` queries by `personId` with no vendor filter, and includes removed accounts |
+| 4 | A vendor that doesn't expose `last_login` is `unverifiable`, never `dormant` | ✅ | `lib/flags.ts` — `NOT_EXPOSED` short-circuits the dormancy branch entirely |
+| 5 | Every field change is retrievable with who/when/source | ✅ | `lib/audit.ts` writes one `AuditEvent` per changed field |
+| 6 | An auditor can view and export everything and change nothing | ✅ | `lib/auth/policy.ts` `canWrite()`, enforced server-side by `requireWriter()` |
+| 7 | A leaver produces one report of every account with action and evidence | ✅ | `lib/leaver.ts` `buildLeaverReport()` |
+
+### Built beyond the brief
+
+Added because the work called for it, not because it was asked for:
+
+| Addition | Why |
+|---|---|
+| **Login lockout + per-IP rate limiting** | §4 asks for security but does not say how. Two different attacks needed two different controls — see [the decision](#login-is-rate-limited-two-ways-because-the-two-attacks-are-different) |
+| **Strict per-request CSP + security headers** | Same clause. `src/middleware.ts` |
+| **Bulk register actions** | Confirming or removing twenty rows one at a time is the difference between a review getting done and not |
+| **Daily snapshots + trend chart** | §3.11 asks for a dashboard; without stored history it could only ever show *now*, never whether things were improving |
+| **Per-vendor data freshness** | A register is only as current as its last upload, and nothing surfaced a vendor nobody had exported in six months |
+| **In-app user guide** (`/guide`) | A standing request from the repo owner; kept in step with the app by `tests/user-guide.test.ts` |
+| **Schema additions** | `VendorGrant` (a vendor can have more than one owner), `SavedView`, `LeaverCase`/`LeaverAction`/`EvidenceFile`, `DisappearedCandidate`, `StagedRow`, `AppSetting`, `LoginAttempt`, `NotificationLog`, `RegisterSnapshot`, and a `FieldState` column beside each optional date to make §3.2's N/A rule representable |
+
+---
+
+## What is pending
+
+Everything not built, why, and what it would take. Nothing here is blocked by a decision
+already made — each is simply not done yet.
+
+| Item | Brief | Why not, and what it needs |
+|---|---|---|
+| **Microsoft Entra SSO** | §1, Phase 2 | Needs WOSG's own Azure tenant and an app registration, which only the customer can create. `createSession()` already takes a user and issues the cookie, so this is the OIDC code exchange and a callback route. Env scaffolding is in `.env.example` |
+| **HR reconciliation import** | §3.6, Phase 2 | The biggest remaining *data-quality* gap. `hrReference` and the Left/Unknown statuses exist and the leavers report works off them, but employee status is set by hand — so the leaver flag is only as good as somebody remembering. Needs a bulk import of an HR active-employee list |
+| **Defined retention policy** | §4 | Not defined, so not implemented. The audit trail and removed accounts grow without bound, which is currently the *safe* direction for an audit tool. Needs a policy decision from WOSG first, then a documented, audited expiry job |
+| **Backup schedule** | §4 | A setting on the database provider rather than code. Not yet configured |
+| **Vendor API pulls** | §3, Phase 3 | Explicitly a spot-check against the manual truth, not a live feed |
+| **Alerting on repeated login lockouts** | — | The daily digest covers register conditions, not security events. Small to add now the email path exists |
+| **Advanced dashboards** | Phase 3 | The trend chart and assurance split are a first cut; per-vendor trends and longer-range reporting would follow |
+
+Phase status against §6: **MVP complete.** **Phase 2** is review cycles ✅ and notifications ✅,
+with HR reconciliation ⬜ and Entra SSO ⬜ outstanding. **Phase 3** not started.
 
 ---
 
@@ -192,6 +288,14 @@ password and break authentication.
   second or two to wake.
 - Confirm the database's region is consistent with WOSG's data policy, and set a
   backup schedule.
+- **Decide a retention policy.** §4 of the brief asks for one and there isn't
+  one. The register holds staff names and email addresses, and the audit trail
+  and removed accounts currently grow without bound — the safe direction for an
+  audit tool, but a decision somebody has to actually take before real personal
+  data goes in. See [What is pending](#what-is-pending).
+- Run the daily job once (Admin → **Run daily job now**) so trend history starts
+  accumulating. It cannot be backfilled, so every day it is not running is a day
+  missing from the chart permanently.
 - There is still no automated alert on repeated lockouts. An admin currently
   finds out by looking at the Admin screen's Sign-in column, not by being told.
 
@@ -378,32 +482,9 @@ hides what the server would refuse anyway.
 
 ---
 
-## What is built, and what is not
+## Known limitations
 
-**Built (the MVP in section 6, plus review cycles):**
-vendors and instances · AccessRecord CRUD and manual entry · CSV import with saved mappings and
-diff preview · person layer with the cross-vendor view, manual matching, merge and split ·
-dormant/unverifiable/expiry flagging · leaver workflow with evidence upload and report ·
-append-only audit log · auditor read-only role · CSV and Excel export of any view · dashboard ·
-saved views · review cycles with challenge prompts and progress tracking · email digest for new
-dormant/leaver/expiring flags and review cycles due or overdue · daily snapshots with a
-ninety-day trend chart and per-vendor data-freshness tracking.
-
-**Not built — deliberately, these are later phases in the requirements:**
-
-- **Microsoft Entra SSO.** Local login is the MVP fallback the requirements allow. The session
-  layer is already identity-provider agnostic: `createSession()` takes a user and issues the
-  cookie, so adding Entra means implementing the OIDC code exchange and calling it. The env
-  scaffolding is in `.env.example`.
-- **HR reconciliation.** The `hrReference` field and the `Left`/`Unknown` employee statuses are
-  in place, and the leavers-with-access report already works off them. What is missing is the
-  bulk import of an HR active-employee list to set those statuses automatically.
-- **Vendor API pulls** — phase 3, and explicitly a spot-check against the manual truth rather
-  than a live feed.
-- **Alerting on repeated login lockouts.** The digest above covers register conditions, not this —
-  see "Known limitations".
-
-### Known limitations
+Distinct from [What is pending](#what-is-pending): these are properties of what *is* built.
 
 - Evidence files are written to the local filesystem under `EVIDENCE_STORAGE_DIR`. For a real
   deployment point this at durable, encrypted, backed-up storage.
@@ -414,3 +495,14 @@ ninety-day trend chart and per-vendor data-freshness tracking.
   packages update.
 - Fuzzy name matching loads all people into memory to score a batch. That is fine for a register
   of this size and would need an index-backed approach at hundreds of thousands of people.
+- Flag recalculation writes one row at a time rather than in bulk. Deliberate at the scale this
+  register is sized for (low thousands of accounts); it would want batching well before ten
+  thousand.
+- Trend snapshots are estate-wide. There is no per-vendor trend, and adding one means a row per
+  vendor per day for a breakdown nobody has yet asked to slice.
+- Bulk register actions apply to the rows ticked on the page you are looking at, not to
+  "everything matching the current filter" — which is the safer default, but means filtering
+  down first on a large result set.
+- On the free hosting tier the app sleeps when idle, so the first request after a quiet spell
+  takes around 50 seconds. Fine for occasional use; visibly broken-looking to a first-time
+  auditor. `~$7/month` removes it.

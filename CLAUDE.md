@@ -3,6 +3,18 @@
 Read [CONTRIBUTING.md](./CONTRIBUTING.md) first. The rules below are the ones
 easiest to break without noticing.
 
+## The requirements document is frozen
+
+[`docs/requirements.md`](./docs/requirements.md) is the original brief, kept
+verbatim. **Do not edit it** — not to correct it, not to bring it in line with
+what was built. It exists so the build can be checked against something that did
+not move.
+
+What does need updating is the **requirements traceability** table in
+[README.md](./README.md): when you finish something it lists as ⬜ or 🟡, change
+its row in the same commit, and add anything built that the brief never asked
+for to *Built beyond the brief*. Nothing enforces this, so it is on you.
+
 ## Always update the user guide
 
 The app has a **User guide** tab, served from `src/content/user-guide.ts`.

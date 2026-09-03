@@ -1,5 +1,21 @@
 # Working on the register
 
+## Which document to update
+
+Four places hold documentation, and they do different jobs:
+
+| File | Job | When you touch it |
+|---|---|---|
+| [`docs/requirements.md`](./docs/requirements.md) | The original brief, **frozen** | **Never.** It is the record of what was asked for. Editing it to match the build destroys the only thing the build can be checked against |
+| [`README.md`](./README.md) | The spec of record — traceability, decisions, ops | When you build something the brief asked for (update its row), build something it didn't (add it to *Built beyond the brief*), or close a gap (move it out of *What is pending*) |
+| `CONTRIBUTING.md` / [`CLAUDE.md`](./CLAUDE.md) | How to work here, and the invariants | When you add an invariant others could break without noticing |
+| `src/content/user-guide.ts` | End-user docs, served at `/guide` | Any user-facing change — see below |
+
+The README's [requirements traceability](./README.md#requirements-traceability)
+table is the one most likely to rot, because nothing enforces it. If you finish
+something listed as ⬜ or 🟡, change it in the same pull request — a status table
+that lies is worse than not having one.
+
 ## The user guide is part of the app, not an afterthought
 
 There is a **User guide** tab in the app, served from
